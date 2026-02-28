@@ -10,12 +10,11 @@ Usage:
   buildapk.sh [--help]
 
 Output directory:
-  Experimentation/Midori-AI-Radio/target/<YYYYMMDD-HHMMSS>/
-  If a folder already exists for the same second, a numeric suffix is added.
+  Radio-App/target/
 
 Examples:
   ./buildapk.sh
-  # Example output: Experimentation/Midori-AI-Radio/target/20260226-153045/
+  # Example output: Radio-App/target/
 EOF
 }
 
@@ -50,21 +49,15 @@ if ! docker info >/dev/null 2>&1; then
   die "docker daemon not running or not accessible (ensure the docker service is running and you can access /var/run/docker.sock)"
 fi
 
-project_dir="${repo_root}/Experimentation/Midori-AI-Radio"
+project_dir="${script_dir}"
 [ -d "${project_dir}" ] || die "Android project not found: ${project_dir}"
 
 target_root="${project_dir}/target"
-timestamp="$(date +%Y%m%d-%H%M%S)"
-out_dir="${target_root}/${timestamp}"
-suffix=1
-while [ -e "${out_dir}" ]; do
-  out_dir="${target_root}/${timestamp}-${suffix}"
-  suffix=$((suffix + 1))
-done
-
+out_dir="${target_root}"
 mkdir -p "${out_dir}"
 chmod -R a+rwx "${out_dir}" >/dev/null 2>&1 || true
 out_dir="$(cd "${out_dir}" && pwd)"
+find "${out_dir}" -maxdepth 1 -type f -name "*.apk" -delete
 
 dockerfile_path="${script_dir}/dockerfile"
 [ -f "${dockerfile_path}" ] || die "Dockerfile not found: ${dockerfile_path}"
@@ -84,9 +77,9 @@ docker build \
 
 # Run the build in a container.
 docker run --rm \
-  -v "${repo_root}:/workspace" \
+  -v "${project_dir}:/workspace" \
   -v "${out_dir}:/out" \
-  -w "/workspace/Experimentation/Midori-AI-Radio" \
+  -w "/workspace" \
   "${image_tag}" \
   bash -lc 'set -euo pipefail
 chmod +x ./gradlew
