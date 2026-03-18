@@ -26,3 +26,11 @@ internal fun shouldExecuteDelayedReconnect(
             isPlaying = isPlaying,
         )
 }
+
+internal fun shouldSeekToReconnectTarget(
+    currentMediaItemIndex: Int,
+    targetIndex: Int,
+    playbackState: Int,
+): Boolean {
+    return currentMediaItemIndex != targetIndex || playbackState == Player.STATE_ENDED
+}

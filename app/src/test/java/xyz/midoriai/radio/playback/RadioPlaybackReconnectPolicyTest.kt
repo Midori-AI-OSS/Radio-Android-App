@@ -87,4 +87,37 @@ class RadioPlaybackReconnectPolicyTest {
             ),
         )
     }
+
+    @Test
+    fun shouldSeekToReconnectTarget_seeksWhenReconnectingEndedSameItem() {
+        assertTrue(
+            shouldSeekToReconnectTarget(
+                currentMediaItemIndex = 0,
+                targetIndex = 0,
+                playbackState = Player.STATE_ENDED,
+            ),
+        )
+    }
+
+    @Test
+    fun shouldSeekToReconnectTarget_avoidsSeekWhenTargetAlreadyActiveAndNotEnded() {
+        assertFalse(
+            shouldSeekToReconnectTarget(
+                currentMediaItemIndex = 0,
+                targetIndex = 0,
+                playbackState = Player.STATE_READY,
+            ),
+        )
+    }
+
+    @Test
+    fun shouldSeekToReconnectTarget_seeksWhenChangingItems() {
+        assertTrue(
+            shouldSeekToReconnectTarget(
+                currentMediaItemIndex = 0,
+                targetIndex = 1,
+                playbackState = Player.STATE_READY,
+            ),
+        )
+    }
 }

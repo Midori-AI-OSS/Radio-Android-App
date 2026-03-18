@@ -392,7 +392,13 @@ class RadioPlaybackService : MediaLibraryService() {
         player.volume = playerVolumeNormal
         syncPlayerPlaylist(channel, forceRebuild = lastPlaylistQuality != quality)
         val targetIndex = lastPlaylistChannels.indexOf(channel).let { if (it >= 0) it else 0 }
-        if (player.currentMediaItemIndex != targetIndex) {
+        if (
+            shouldSeekToReconnectTarget(
+                currentMediaItemIndex = player.currentMediaItemIndex,
+                targetIndex = targetIndex,
+                playbackState = player.playbackState,
+            )
+        ) {
             player.seekToDefaultPosition(targetIndex)
         }
         player.prepare()
