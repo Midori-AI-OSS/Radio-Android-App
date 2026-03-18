@@ -1,8 +1,13 @@
 package xyz.midoriai.radio.playback
 
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import java.util.Locale
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import xyz.midoriai.radio.radioapi.ArtPayload
 import xyz.midoriai.radio.radioapi.CurrentPayload
+
+private const val SESSION_ARTWORK_TRACK_QUERY_PARAM = "midoriai_track_id"
 
 internal data class RadioPresentationState(
     val normalizedSelectedChannel: String,
@@ -46,6 +51,32 @@ internal fun resolveRadioPresentationState(
         artUrl = artUrl,
         trackId = currentTrackForSelectedChannel?.trackId ?: artForSelectedChannel?.trackId ?: "unknown",
     )
+}
+
+internal fun buildSessionArtworkUrl(
+    artUrl: String,
+    trackId: String,
+): String {
+    val normalizedArtUrl = artUrl.trim()
+    if (normalizedArtUrl.isBlank()) {
+        return normalizedArtUrl
+    }
+
+    val normalizedTrackId = trackId.trim()
+    if (normalizedTrackId.isBlank() || normalizedTrackId == "unknown") {
+        return normalizedArtUrl
+    }
+
+    normalizedArtUrl.toHttpUrlOrNull()?.let { parsed ->
+        return parsed.newBuilder()
+            .setQueryParameter(SESSION_ARTWORK_TRACK_QUERY_PARAM, normalizedTrackId)
+            .build()
+            .toString()
+    }
+
+    val separator = if ('?' in normalizedArtUrl) '&' else '?'
+    val encodedTrackId = URLEncoder.encode(normalizedTrackId, StandardCharsets.UTF_8.toString())
+    return "$normalizedArtUrl$separator$SESSION_ARTWORK_TRACK_QUERY_PARAM=$encodedTrackId"
 }
 
 internal fun normalizePersistedChannel(value: String): String {

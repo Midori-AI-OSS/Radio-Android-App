@@ -612,7 +612,12 @@ class RadioPlaybackService : MediaLibraryService() {
                 .setArtist(presentation.channelSubtitle)
                 .setDisplayTitle(presentation.trackTitle)
             presentation.artUrl?.takeIf { it.isNotBlank() }?.let { artUrl ->
-                builder.setArtworkUri(artUrl.toUri())
+                builder.setArtworkUri(
+                    buildSessionArtworkUrl(
+                        artUrl = artUrl,
+                        trackId = presentation.trackId,
+                    ).toUri(),
+                )
             }
         } else {
             builder
@@ -660,6 +665,14 @@ class RadioPlaybackService : MediaLibraryService() {
         } else {
             null
         }
+        val metadataArtworkUrl = presentation?.artUrl
+            ?.takeIf { it.isNotBlank() }
+            ?.let { artUrl ->
+                buildSessionArtworkUrl(
+                    artUrl = artUrl,
+                    trackId = presentation.trackId,
+                )
+            }
 
         return listOf(
             normalizedChannel,
@@ -667,7 +680,7 @@ class RadioPlaybackService : MediaLibraryService() {
             presentation?.trackId.orEmpty(),
             presentation?.trackTitle.orEmpty(),
             presentation?.channelSubtitle.orEmpty(),
-            presentation?.artUrl.orEmpty(),
+            metadataArtworkUrl.orEmpty(),
         ).joinToString("|")
     }
 

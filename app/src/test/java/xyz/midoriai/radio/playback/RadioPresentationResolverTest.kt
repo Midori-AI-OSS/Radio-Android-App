@@ -1,8 +1,10 @@
 package xyz.midoriai.radio.playback
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import xyz.midoriai.radio.radioapi.ArtPayload
 import xyz.midoriai.radio.radioapi.CurrentPayload
 import xyz.midoriai.radio.radioapi.QualityLevel
@@ -94,5 +96,36 @@ class RadioPresentationResolverTest {
         assertEquals("Fetching current track...", result.trackTitle)
         assertEquals("track-art-only", result.trackId)
         assertEquals("https://radio.midori-ai.xyz/art/track-art-only.jpg", result.artUrl)
+    }
+
+    @Test
+    fun buildSessionArtworkUrl_changesWhenTrackChangesAtStableArtEndpoint() {
+        val baseUrl = "https://radio.midori-ai.xyz/radio/v1/art/image?channel=all"
+
+        val first = buildSessionArtworkUrl(
+            artUrl = baseUrl,
+            trackId = "track-123",
+        )
+        val second = buildSessionArtworkUrl(
+            artUrl = baseUrl,
+            trackId = "track-456",
+        )
+
+        val parsedFirst = first.toHttpUrl()
+        assertEquals("all", parsedFirst.queryParameter("channel"))
+        assertEquals("track-123", parsedFirst.queryParameter("midoriai_track_id"))
+        assertNotEquals(first, second)
+    }
+
+    @Test
+    fun buildSessionArtworkUrl_keepsOriginalUrlWhenTrackIdIsUnknown() {
+        val baseUrl = "https://radio.midori-ai.xyz/radio/v1/art/image?channel=focus"
+
+        val result = buildSessionArtworkUrl(
+            artUrl = baseUrl,
+            trackId = "unknown",
+        )
+
+        assertEquals(baseUrl, result)
     }
 }
