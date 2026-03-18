@@ -81,7 +81,7 @@ class RadioPlaybackService : MediaLibraryService() {
                         .build(),
                     true,
                 )
-                exo.repeatMode = Player.REPEAT_MODE_ALL
+                exo.repeatMode = Player.REPEAT_MODE_OFF
                 exo.volume = playerVolumeNormal
                 exo.setHandleAudioBecomingNoisy(true)
                 exo.addListener(PlayerEventListener())
@@ -489,18 +489,24 @@ class RadioPlaybackService : MediaLibraryService() {
         }
 
         val activeQuality = normalizeQuality(_activeQuality.value)
-        val selectedIndex = resolvedChannels.indexOf(normalizedSelected).let { if (it >= 0) it else 0 }
+        val activePlaylist = resolveActivePlayerPlaylistPolicy(
+            selectedChannel = normalizedSelected,
+            availableChannels = resolvedChannels,
+        )
         val needsRebuild = forceRebuild ||
-            lastPlaylistChannels != resolvedChannels ||
+            lastPlaylistChannels != activePlaylist.channels ||
             lastPlaylistQuality != activeQuality ||
-            player.mediaItemCount != resolvedChannels.size
+            player.mediaItemCount != activePlaylist.channels.size
 
         if (needsRebuild) {
-            val mediaItems = resolvedChannels.map { channel -> buildMediaItem(channel = channel, quality = activeQuality) }
-            player.setMediaItems(mediaItems, selectedIndex, C.TIME_UNSET)
-            lastPlaylistChannels = resolvedChannels
+            val mediaItems = activePlaylist.channels
+                .map { channel -> buildMediaItem(channel = channel, quality = activeQuality) }
+            player.setMediaItems(mediaItems, activePlaylist.startIndex, C.TIME_UNSET)
+            lastPlaylistChannels = activePlaylist.channels
             lastPlaylistQuality = activeQuality
-            lastKnownPlayerChannel = player.currentMediaItem?.mediaId ?: normalizedSelected
+            lastKnownPlayerChannel = activePlaylist.channels
+                .getOrNull(activePlaylist.startIndex)
+                ?: normalizedSelected
             lastPublishedMetadataFingerprint = null
 
             if (playbackDesired) {
@@ -509,8 +515,8 @@ class RadioPlaybackService : MediaLibraryService() {
             } else {
                 player.playWhenReady = false
             }
-        } else if (player.currentMediaItemIndex != selectedIndex) {
-            player.seekToDefaultPosition(selectedIndex)
+        } else if (player.currentMediaItemIndex != activePlaylist.startIndex) {
+            player.seekToDefaultPosition(activePlaylist.startIndex)
         }
 
         syncCurrentMediaItemMetadata()
@@ -557,7 +563,10 @@ class RadioPlaybackService : MediaLibraryService() {
         selectedChannel: String,
         quality: String,
     ): List<MediaItem> {
-        return ensureAllChannel(_channels.value + selectedChannel)
+        return resolveActivePlayerPlaylistPolicy(
+            selectedChannel = selectedChannel,
+            availableChannels = _channels.value,
+        ).channels
             .map { channel -> buildMediaItem(channel = channel, quality = quality) }
     }
 
@@ -776,7 +785,7 @@ class RadioPlaybackService : MediaLibraryService() {
             _channels.value = resolvedChannels
         }
 
-        syncPlayerPlaylist(_selectedChannel.value, forceRebuild = resolvedChannels != lastPlaylistChannels)
+        syncPlayerPlaylist(_selectedChannel.value)
         if (resolvedChannels != previousChannels) {
             notifyBrowseRootChildrenChanged()
         }
