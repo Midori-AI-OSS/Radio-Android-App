@@ -16,9 +16,5 @@ sealed interface RadioPlaybackState {
         val nextDelayMs: Long,
     ) : RadioPlaybackState
 
-    data class Unavailable(
-        val error: String,
-    ) : RadioPlaybackState
-
     data object Stopped : RadioPlaybackState
 }

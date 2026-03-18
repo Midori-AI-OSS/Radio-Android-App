@@ -24,11 +24,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import xyz.midoriai.radio.radioapi.ArtPayload
 import xyz.midoriai.radio.radioapi.CurrentPayload
-import xyz.midoriai.radio.radioapi.HealthPayload
 import xyz.midoriai.radio.radioapi.OkHttpRadioApi
 import xyz.midoriai.radio.radioapi.RadioApi
 import xyz.midoriai.radio.radioapi.RadioApiDefaults
-import xyz.midoriai.radio.radioapi.RadioApiFailure
 import xyz.midoriai.radio.radioapi.RadioApiResult
 import xyz.midoriai.radio.radioapi.buildStreamUrl
 import xyz.midoriai.radio.radioapi.normalizeQuality
@@ -41,7 +39,6 @@ class NowPlayingViewModel(
     private val playingMetadataPollIntervalMs = 5000L
     private val idleMetadataPollIntervalMs = 20000L
     private val channelRefreshIntervalMs = 60000L
-    private val healthPollIntervalMs = 30000L
     private val channelSwitchFadeDurationMs = 220L
     private val adjacentArtPrefetchCooldownMs = 15000L
     private val playerVolumeNormal = 1f
@@ -82,12 +79,6 @@ class NowPlayingViewModel(
     private val _art = MutableStateFlow<ArtPayload?>(null)
     val art: StateFlow<ArtPayload?> = _art.asStateFlow()
 
-    private val _health = MutableStateFlow<HealthPayload?>(null)
-    val health: StateFlow<HealthPayload?> = _health.asStateFlow()
-
-    private val _lastError = MutableStateFlow<String?>(null)
-    val lastError: StateFlow<String?> = _lastError.asStateFlow()
-
     private val _activeQuality = MutableStateFlow("medium")
     val activeQuality: StateFlow<String> = _activeQuality.asStateFlow()
 
@@ -100,12 +91,6 @@ class NowPlayingViewModel(
         ensureAllChannel((fetched + listOf(normalizedSelected)).distinct())
     }.stateIn(viewModelScope, SharingStarted.Eagerly, listOf("all"))
 
-    private val _channelsError = MutableStateFlow<String?>(null)
-    val channelsError: StateFlow<String?> = _channelsError.asStateFlow()
-
-    private val _channelsLoading = MutableStateFlow(false)
-    val channelsLoading: StateFlow<Boolean> = _channelsLoading.asStateFlow()
-
     private val artByChannel: MutableMap<String, ArtPayload> = mutableMapOf()
     private val artFetchInFlight: MutableSet<String> = mutableSetOf()
     private val artFetchAtMsByChannel: MutableMap<String, Long> = mutableMapOf()
@@ -116,7 +101,6 @@ class NowPlayingViewModel(
     private var channelSwitchJob: Job? = null
     private var metadataPollJob: Job? = null
     private var channelPollJob: Job? = null
-    private var healthPollJob: Job? = null
     private var connectGeneration: Long = 0
     private var lastObservedChannel: String? = null
     private var lastObservedQuality: String? = null
@@ -124,7 +108,6 @@ class NowPlayingViewModel(
     init {
         startMetadataPolling()
         startChannelPolling()
-        startHealthPolling()
 
         viewModelScope.launch {
             selectedChannel
@@ -204,13 +187,6 @@ class NowPlayingViewModel(
         _playbackState.value = RadioPlaybackState.Stopped
     }
 
-    fun retry() {
-        playbackDesired = true
-        reconnectAttempt = 0
-        player.volume = playerVolumeNormal
-        connectToSelectedStream(RadioPlaybackState.Connecting)
-    }
-
     fun selectAdjacentChannel(direction: Int) {
         val available = channels.value
         if (available.isEmpty()) {
@@ -281,7 +257,6 @@ class NowPlayingViewModel(
         }
 
         _playbackState.value = defaultState
-        _lastError.value = null
 
         player.volume = playerVolumeNormal
         player.setMediaItem(MediaItem.fromUri(streamUrl))
@@ -303,7 +278,6 @@ class NowPlayingViewModel(
         val capturedGeneration = connectGeneration
 
         _playbackState.value = RadioPlaybackState.Reconnecting(reconnectAttempt, delayMs)
-        _lastError.value = reason
 
         reconnectJob = viewModelScope.launch {
             delay(delayMs)
@@ -364,22 +338,7 @@ class NowPlayingViewModel(
         }
     }
 
-    private fun startHealthPolling() {
-        if (healthPollJob?.isActive == true) {
-            return
-        }
-
-        healthPollJob = viewModelScope.launch {
-            while (isActive) {
-                pollHealthOnce()
-                delay(healthPollIntervalMs)
-            }
-        }
-    }
-
     private suspend fun refreshChannels() {
-        _channelsLoading.value = true
-        _channelsError.value = null
         var resolvedChannels = ensureAllChannel(_channels.value)
 
         try {
@@ -395,18 +354,14 @@ class NowPlayingViewModel(
                 }
 
                 is RadioApiResult.Failure -> {
-                    _channelsError.value = toFailureText(result.failure)
                     resolvedChannels = ensureAllChannel(_channels.value)
                     _channels.value = resolvedChannels
                 }
             }
         } catch (exc: Exception) {
-            _channelsError.value = exc.message ?: "Failed to load channels"
             resolvedChannels = ensureAllChannel(_channels.value)
             _channels.value = resolvedChannels
         }
-
-        _channelsLoading.value = false
 
         pruneArtCache(resolvedChannels)
         publishCachedArtForSelectedChannel(selectedChannel.value)
@@ -429,15 +384,11 @@ class NowPlayingViewModel(
                     _currentTrack.value = result.data
                 }
 
-                is RadioApiResult.Failure -> {
-                    _lastError.value = toFailureText(result.failure)
-                }
+                is RadioApiResult.Failure -> { }
             }
         } catch (exc: CancellationException) {
             throw exc
-        } catch (exc: Exception) {
-            _lastError.value = exc.message ?: "Current polling failed"
-        }
+        } catch (_: Exception) { }
     }
 
     private suspend fun pollArtOnce() {
@@ -449,9 +400,7 @@ class NowPlayingViewModel(
             )
         } catch (exc: CancellationException) {
             throw exc
-        } catch (exc: Exception) {
-            _lastError.value = exc.message ?: "Art polling failed"
-        }
+        } catch (_: Exception) { }
     }
 
     private suspend fun refreshSelectedAndAdjacentArt(
@@ -517,19 +466,11 @@ class NowPlayingViewModel(
                     }
                 }
 
-                is RadioApiResult.Failure -> {
-                    if (!isPrefetch && normalizedChannel == normalizePersistedChannel(selectedChannel.value)) {
-                        _lastError.value = toFailureText(result.failure)
-                    }
-                }
+                is RadioApiResult.Failure -> { }
             }
         } catch (exc: CancellationException) {
             throw exc
-        } catch (exc: Exception) {
-            if (!isPrefetch && normalizedChannel == normalizePersistedChannel(selectedChannel.value)) {
-                _lastError.value = exc.message ?: "Art polling failed"
-            }
-        } finally {
+        } catch (_: Exception) { } finally {
             artFetchInFlight.remove(normalizedChannel)
         }
     }
@@ -571,24 +512,6 @@ class NowPlayingViewModel(
         artByChannel.keys.removeAll { it !in allowedChannels }
         artFetchAtMsByChannel.keys.removeAll { it !in allowedChannels }
         artFetchInFlight.removeAll { it !in allowedChannels }
-    }
-
-    private suspend fun pollHealthOnce() {
-        try {
-            when (val result = api.fetchHealth()) {
-                is RadioApiResult.Success -> {
-                    _health.value = result.data
-                }
-
-                is RadioApiResult.Failure -> {
-                    _lastError.value = toFailureText(result.failure)
-                }
-            }
-        } catch (exc: CancellationException) {
-            throw exc
-        } catch (exc: Exception) {
-            _lastError.value = exc.message ?: "Health polling failed"
-        }
     }
 
     private suspend fun fadePlayerVolume(target: Float, durationMs: Long) {
@@ -640,17 +563,6 @@ class NowPlayingViewModel(
         queueReconnect(if (message.isNotEmpty()) message else "Playback error")
     }
 
-    private fun toFailureText(failure: RadioApiFailure): String {
-        return when (failure) {
-            is RadioApiFailure.Http -> "HTTP ${failure.status}: ${failure.message}"
-            is RadioApiFailure.InvalidEnvelope -> failure.message
-            is RadioApiFailure.Network -> failure.message
-            is RadioApiFailure.NullData -> failure.message
-            is RadioApiFailure.UnsupportedVersion -> "Unsupported API version: ${failure.version}"
-            is RadioApiFailure.Upstream -> "${failure.code}: ${failure.message}"
-        }
-    }
-
     private fun floorMod(value: Int, modulus: Int): Int {
         if (modulus <= 0) {
             return 0
@@ -673,8 +585,6 @@ class NowPlayingViewModel(
         metadataPollJob = null
         channelPollJob?.cancel()
         channelPollJob = null
-        healthPollJob?.cancel()
-        healthPollJob = null
         player.release()
         super.onCleared()
     }
@@ -692,7 +602,6 @@ class NowPlayingViewModel(
             if (isPlaying) {
                 reconnectAttempt = 0
                 _playbackState.value = RadioPlaybackState.Playing
-                _lastError.value = null
                 player.volume = playerVolumeNormal
             }
         }
@@ -705,7 +614,6 @@ class NowPlayingViewModel(
             if (playbackState == Player.STATE_READY && player.playWhenReady && player.isPlaying) {
                 reconnectAttempt = 0
                 _playbackState.value = RadioPlaybackState.Playing
-                _lastError.value = null
                 player.volume = playerVolumeNormal
             }
 
