@@ -21,6 +21,7 @@ This repository is an Android app (Kotlin + Jetpack Compose) built with Gradle. 
 - No broad fallbacks: do not add “fallback behavior everywhere”; only add a narrow fallback when the task explicitly requires it, and justify it.
 - No backward compatibility shims by default: do not preserve old code paths “just in case”; only add compatibility layers when the task explicitly requires it.
 - Minimal documentation, minimal logging: prefer reading code and docstrings; do not add docs/logs unless required to diagnose a specific issue or prevent a crash.
+- Naming policy: use `midoriai`, `Midori AI`, or `Midori-AI`; do not introduce branding tokens that omit `ai`.
 - Run the project checks that apply to your change and record exact commands:
   - `./gradlew test`
   - `./gradlew :app:assembleDebug`

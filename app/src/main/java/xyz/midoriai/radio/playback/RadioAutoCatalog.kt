@@ -2,8 +2,8 @@ package xyz.midoriai.radio.playback
 
 import java.util.Locale
 
-internal const val RADIO_BROWSE_ROOT_ID = "midori:root"
-private const val RADIO_BROWSE_CHANNEL_PREFIX = "midori:channel:"
+internal const val RADIO_BROWSE_ROOT_ID = "midoriai:root"
+private const val RADIO_BROWSE_CHANNEL_PREFIX = "midoriai:channel:"
 
 private val SEARCH_SPACING_REGEX = Regex("\\s+")
 private val SEARCH_PUNCTUATION_REGEX = Regex("[^\\p{L}\\p{N}]+")
@@ -13,7 +13,6 @@ private val SEARCH_STOP_WORDS = setOf(
     "from",
     "listen",
     "media",
-    "midori",
     "midoriai",
     "music",
     "play",

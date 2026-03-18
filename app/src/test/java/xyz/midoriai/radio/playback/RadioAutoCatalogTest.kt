@@ -9,7 +9,7 @@ class RadioAutoCatalogTest {
     fun toBrowseChannelMediaId_roundTripsChannel() {
         val mediaId = toBrowseChannelMediaId(" Chill ")
 
-        assertEquals("midori:channel:chill", mediaId)
+        assertEquals("midoriai:channel:chill", mediaId)
         assertEquals("chill", channelFromBrowseMediaId(mediaId))
     }
 
