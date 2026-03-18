@@ -175,8 +175,7 @@ class RadioPlaybackService : MediaLibraryService() {
     override fun onGetSession(controllerInfo: ControllerInfo): MediaLibrarySession? = mediaSession
 
     override fun onDestroy() {
-        reconnectJob?.cancel()
-        reconnectJob = null
+        clearReconnectState()
         channelSwitchJob?.cancel()
         channelSwitchJob = null
         metadataPollJob?.cancel()
@@ -292,8 +291,7 @@ class RadioPlaybackService : MediaLibraryService() {
 
     private fun pausePlayback() {
         playbackDesired = false
-        reconnectJob?.cancel()
-        reconnectJob = null
+        clearReconnectState()
         channelSwitchJob?.cancel()
         channelSwitchJob = null
 
@@ -371,8 +369,7 @@ class RadioPlaybackService : MediaLibraryService() {
         defaultState: RadioPlaybackState,
         channelOverride: String? = null,
     ) {
-        reconnectJob?.cancel()
-        reconnectJob = null
+        cancelPendingReconnectJob()
         connectGeneration += 1
 
         val channel = normalizePersistedChannel(channelOverride ?: _selectedChannel.value)
@@ -402,13 +399,41 @@ class RadioPlaybackService : MediaLibraryService() {
         player.playWhenReady = true
     }
 
+    private fun cancelPendingReconnectJob() {
+        reconnectJob?.cancel()
+        reconnectJob = null
+    }
+
+    private fun clearReconnectState() {
+        cancelPendingReconnectJob()
+        reconnectAttempt = 0
+    }
+
+    private fun isPlaybackHealthyForReconnect(): Boolean {
+        return isHealthyPlayback(
+            playbackState = player.playbackState,
+            playWhenReady = player.playWhenReady,
+            isPlaying = player.isPlaying,
+        )
+    }
+
+    private fun markPlaybackRecovered() {
+        clearReconnectState()
+        _playbackState.value = RadioPlaybackState.Playing
+        player.volume = playerVolumeNormal
+    }
+
     private fun queueReconnect(@Suppress("UNUSED_PARAMETER") reason: String) {
         if (!playbackDesired) {
             return
         }
 
-        reconnectJob?.cancel()
-        reconnectJob = null
+        if (isPlaybackHealthyForReconnect()) {
+            markPlaybackRecovered()
+            return
+        }
+
+        cancelPendingReconnectJob()
 
         reconnectAttempt += 1
         val delayIndex = (reconnectAttempt - 1).coerceAtMost(reconnectDelaysMs.lastIndex)
@@ -419,7 +444,16 @@ class RadioPlaybackService : MediaLibraryService() {
 
         reconnectJob = serviceScope.launch {
             delay(delayMs)
-            if (!playbackDesired || capturedGeneration != connectGeneration) {
+            if (
+                !shouldExecuteDelayedReconnect(
+                    playbackDesired = playbackDesired,
+                    queuedGeneration = capturedGeneration,
+                    currentGeneration = connectGeneration,
+                    playbackState = player.playbackState,
+                    playWhenReady = player.playWhenReady,
+                    isPlaying = player.isPlaying,
+                )
+            ) {
                 return@launch
             }
 
@@ -1129,9 +1163,7 @@ class RadioPlaybackService : MediaLibraryService() {
             }
 
             if (isPlaying) {
-                reconnectAttempt = 0
-                _playbackState.value = RadioPlaybackState.Playing
-                player.volume = playerVolumeNormal
+                markPlaybackRecovered()
             }
         }
 
@@ -1140,10 +1172,14 @@ class RadioPlaybackService : MediaLibraryService() {
                 return
             }
 
-            if (playbackState == Player.STATE_READY && player.playWhenReady && player.isPlaying) {
-                reconnectAttempt = 0
-                _playbackState.value = RadioPlaybackState.Playing
-                player.volume = playerVolumeNormal
+            if (
+                isHealthyPlayback(
+                    playbackState = playbackState,
+                    playWhenReady = player.playWhenReady,
+                    isPlaying = player.isPlaying,
+                )
+            ) {
+                markPlaybackRecovered()
             }
 
             if (playbackState == Player.STATE_ENDED) {
