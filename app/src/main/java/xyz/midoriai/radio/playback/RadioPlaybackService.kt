@@ -13,13 +13,18 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.LibraryResult
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaLibraryService.LibraryParams
+import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSession.ConnectionResult
 import androidx.media3.session.MediaSession.ControllerInfo
-import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
+import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CancellationException
@@ -47,7 +52,8 @@ import xyz.midoriai.radio.radioapi.normalizeQuality
 import xyz.midoriai.radio.settings.RadioSettingsRepository
 import xyz.midoriai.radio.ui.screens.nowplaying.RadioPlaybackState
 
-class RadioPlaybackService : MediaSessionService() {
+@UnstableApi
+class RadioPlaybackService : MediaLibraryService() {
     private val reconnectDelaysMs: List<Long> = listOf(1000L, 2000L, 4000L, 8000L, 16000L, 30000L)
     private val playingMetadataPollIntervalMs = 5000L
     private val idleMetadataPollIntervalMs = 20000L
@@ -122,7 +128,7 @@ class RadioPlaybackService : MediaSessionService() {
         }
     }
 
-    private var mediaSession: MediaSession? = null
+    private var mediaSession: MediaLibrarySession? = null
 
     private val _playbackState = MutableStateFlow<RadioPlaybackState>(RadioPlaybackState.Idle)
     private val _currentTrack = MutableStateFlow<CurrentPayload?>(null)
@@ -155,8 +161,7 @@ class RadioPlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
 
-        mediaSession = MediaSession.Builder(this, sessionPlayer)
-            .setCallback(SessionCallback())
+        mediaSession = MediaLibrarySession.Builder(this, sessionPlayer, SessionCallback())
             .setSessionActivity(buildSessionActivity())
             .build()
 
@@ -167,7 +172,7 @@ class RadioPlaybackService : MediaSessionService() {
         publishSessionSnapshotAndMetadata()
     }
 
-    override fun onGetSession(controllerInfo: ControllerInfo): MediaSession? = mediaSession
+    override fun onGetSession(controllerInfo: ControllerInfo): MediaLibrarySession? = mediaSession
 
     override fun onDestroy() {
         reconnectJob?.cancel()
@@ -322,6 +327,24 @@ class RadioPlaybackService : MediaSessionService() {
         }
     }
 
+    private fun selectChannelImmediately(channel: String) {
+        val normalizedChannel = normalizePersistedChannel(channel)
+        val previousChannels = ensureAllChannel(_channels.value)
+        _selectedChannel.value = normalizedChannel
+        _channels.update { ensureAllChannel(it + normalizedChannel) }
+        if (_channels.value != previousChannels) {
+            notifyBrowseRootChildrenChanged()
+        }
+        publishCachedArtForSelectedChannel(normalizedChannel)
+        serviceScope.launch {
+            settingsRepository.setChannel(normalizedChannel)
+            refreshSelectedAndAdjacentArt(
+                selected = normalizedChannel,
+                forceSelectedRefresh = false,
+            )
+        }
+    }
+
     private fun switchChannelWithFade(channel: String) {
         channelSwitchJob?.cancel()
         channelSwitchJob = serviceScope.launch {
@@ -459,6 +482,100 @@ class RadioPlaybackService : MediaSessionService() {
         syncCurrentMediaItemMetadata()
     }
 
+    private fun buildLibraryRootItem(): MediaItem {
+        return MediaItem.Builder()
+            .setMediaId(RADIO_BROWSE_ROOT_ID)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setIsBrowsable(true)
+                    .setIsPlayable(false)
+                    .setTitle(getString(R.string.app_name))
+                    .setDisplayTitle(getString(R.string.app_name))
+                    .setArtist(getString(R.string.auto_browse_root_subtitle))
+                    .build(),
+            )
+            .build()
+    }
+
+    private fun buildLibraryChannelItem(channel: String): MediaItem {
+        val normalizedChannel = normalizePersistedChannel(channel)
+        val channelTitle = toChannelDisplayName(normalizedChannel)
+        val metadataBuilder = MediaMetadata.Builder()
+            .setIsBrowsable(false)
+            .setIsPlayable(true)
+            .setAlbumTitle(getString(R.string.app_name))
+            .setTitle(channelTitle)
+            .setDisplayTitle(channelTitle)
+            .setArtist(toChannelSubtitle(normalizedChannel))
+
+        artByChannel[normalizedChannel]
+            ?.artUrl
+            ?.takeIf { it.isNotBlank() }
+            ?.let { metadataBuilder.setArtworkUri(it.toUri()) }
+
+        return MediaItem.Builder()
+            .setMediaId(toBrowseChannelMediaId(normalizedChannel))
+            .setMediaMetadata(metadataBuilder.build())
+            .build()
+    }
+
+    private fun buildPlaybackItemsForChannel(
+        selectedChannel: String,
+        quality: String,
+    ): List<MediaItem> {
+        return ensureAllChannel(_channels.value + selectedChannel)
+            .map { channel -> buildMediaItem(channel = channel, quality = quality) }
+    }
+
+    private fun buildSearchResultItems(query: String): List<MediaItem> {
+        val channel = resolveChannelForSearch(
+            query = query,
+            availableChannels = _channels.value,
+        )
+        return listOf(buildLibraryChannelItem(channel))
+    }
+
+    private fun resolveRequestedChannel(mediaItems: List<MediaItem>): String {
+        val requestedItem = mediaItems.firstOrNull() ?: return "all"
+        val requestedMediaId = requestedItem.mediaId.trim()
+        val requestedQuery = requestedItem.requestMetadata.searchQuery
+
+        channelFromBrowseMediaId(requestedMediaId)?.let { return it }
+
+        if (requestedMediaId.isNotBlank()) {
+            val normalizedMediaId = normalizePersistedChannel(requestedMediaId)
+            if (normalizedMediaId == "all" || normalizedMediaId in _channels.value) {
+                return normalizedMediaId
+            }
+        }
+
+        return resolveChannelForSearch(
+            query = requestedQuery,
+            availableChannels = _channels.value,
+        )
+    }
+
+    private fun pagedMediaItems(
+        items: List<MediaItem>,
+        page: Int,
+        pageSize: Int,
+    ): List<MediaItem> {
+        if (page < 0 || pageSize <= 0) {
+            return emptyList()
+        }
+
+        val fromIndexLong = page.toLong() * pageSize.toLong()
+        if (fromIndexLong >= items.size || fromIndexLong < 0L) {
+            return emptyList()
+        }
+
+        val fromIndex = fromIndexLong.toInt()
+        val toIndex = (fromIndexLong + pageSize.toLong())
+            .coerceAtMost(items.size.toLong())
+            .toInt()
+        return items.subList(fromIndex, toIndex)
+    }
+
     private fun buildMediaItem(
         channel: String,
         quality: String,
@@ -499,9 +616,9 @@ class RadioPlaybackService : MediaSessionService() {
             }
         } else {
             builder
-                .setTitle(toChannelLabel(normalizedChannel))
+                .setTitle(toChannelDisplayName(normalizedChannel))
                 .setArtist(getString(R.string.app_name))
-                .setDisplayTitle(toChannelLabel(normalizedChannel))
+                .setDisplayTitle(toChannelDisplayName(normalizedChannel))
         }
 
         return builder.build()
@@ -587,6 +704,7 @@ class RadioPlaybackService : MediaSessionService() {
     }
 
     private suspend fun refreshChannels() {
+        val previousChannels = ensureAllChannel(_channels.value)
         var resolvedChannels = ensureAllChannel(_channels.value)
 
         try {
@@ -612,6 +730,9 @@ class RadioPlaybackService : MediaSessionService() {
         }
 
         syncPlayerPlaylist(_selectedChannel.value, forceRebuild = resolvedChannels != lastPlaylistChannels)
+        if (resolvedChannels != previousChannels) {
+            notifyBrowseRootChildrenChanged()
+        }
         pruneArtCache(resolvedChannels)
         publishCachedArtForSelectedChannel(_selectedChannel.value)
         try {
@@ -730,6 +851,14 @@ class RadioPlaybackService : MediaSessionService() {
         _art.value = cached
     }
 
+    private fun notifyBrowseRootChildrenChanged() {
+        mediaSession?.notifyChildrenChanged(
+            RADIO_BROWSE_ROOT_ID,
+            ensureAllChannel(_channels.value).size,
+            null,
+        )
+    }
+
     private fun selectedAndAdjacentChannels(selected: String): List<String> {
         val available = _channels.value
         if (available.isEmpty()) {
@@ -843,12 +972,12 @@ class RadioPlaybackService : MediaSessionService() {
         )
     }
 
-    private inner class SessionCallback : MediaSession.Callback {
+    private inner class SessionCallback : MediaLibrarySession.Callback {
         override fun onConnect(
             session: MediaSession,
             controller: ControllerInfo,
         ): ConnectionResult {
-            val sessionCommands = ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+            val sessionCommands = ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
                 .add(SET_QUALITY_SESSION_COMMAND)
                 .build()
 
@@ -873,6 +1002,106 @@ class RadioPlaybackService : MediaSessionService() {
 
                 else -> Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
             }
+        }
+
+        override fun onGetLibraryRoot(
+            session: MediaLibrarySession,
+            browser: ControllerInfo,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<MediaItem>> {
+            return Futures.immediateFuture(
+                LibraryResult.ofItem(buildLibraryRootItem(), params),
+            )
+        }
+
+        override fun onGetItem(
+            session: MediaLibrarySession,
+            browser: ControllerInfo,
+            mediaId: String,
+        ): ListenableFuture<LibraryResult<MediaItem>> {
+            val item = when (mediaId) {
+                RADIO_BROWSE_ROOT_ID -> buildLibraryRootItem()
+                else -> {
+                    val channel = channelFromBrowseMediaId(mediaId)
+                        ?: normalizePersistedChannel(mediaId)
+                    buildLibraryChannelItem(channel)
+                }
+            }
+            return Futures.immediateFuture(LibraryResult.ofItem(item, null))
+        }
+
+        override fun onGetChildren(
+            session: MediaLibrarySession,
+            browser: ControllerInfo,
+            parentId: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+            val items = when (parentId) {
+                RADIO_BROWSE_ROOT_ID -> ensureAllChannel(_channels.value)
+                    .map(::buildLibraryChannelItem)
+                else -> emptyList()
+            }
+
+            return Futures.immediateFuture(
+                LibraryResult.ofItemList(pagedMediaItems(items, page, pageSize), params),
+            )
+        }
+
+        override fun onSearch(
+            session: MediaLibrarySession,
+            browser: ControllerInfo,
+            query: String,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<Void>> {
+            val itemCount = buildSearchResultItems(query).size
+            session.notifySearchResultChanged(browser, query, itemCount, params)
+            return Futures.immediateFuture(LibraryResult.ofVoid(params))
+        }
+
+        override fun onGetSearchResult(
+            session: MediaLibrarySession,
+            browser: ControllerInfo,
+            query: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+            return Futures.immediateFuture(
+                LibraryResult.ofItemList(
+                    pagedMediaItems(buildSearchResultItems(query), page, pageSize),
+                    params,
+                ),
+            )
+        }
+
+        override fun onSetMediaItems(
+            mediaSession: MediaSession,
+            controller: ControllerInfo,
+            mediaItems: List<MediaItem>,
+            startIndex: Int,
+            startPositionMs: Long,
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val requestedChannel = resolveRequestedChannel(mediaItems)
+            val normalizedChannel = normalizePersistedChannel(requestedChannel)
+            val quality = resolveQualityForConnect()
+            val playbackItems = buildPlaybackItemsForChannel(
+                selectedChannel = normalizedChannel,
+                quality = quality,
+            )
+            val targetIndex = playbackItems.indexOfFirst { it.mediaId == normalizedChannel }
+                .let { if (it >= 0) it else 0 }
+
+            selectChannelImmediately(normalizedChannel)
+
+            return Futures.immediateFuture(
+                MediaSession.MediaItemsWithStartPosition(
+                    playbackItems,
+                    targetIndex,
+                    C.TIME_UNSET,
+                ),
+            )
         }
     }
 
@@ -920,6 +1149,21 @@ class RadioPlaybackService : MediaSessionService() {
                 syncCurrentMediaItemMetadata()
             }
             val channel = mediaItem?.mediaId?.takeIf { it.isNotBlank() } ?: return
+            val selectedChannel = normalizePersistedChannel(_selectedChannel.value)
+
+            if (
+                shouldRestoreSelectedChannelAfterTransition(
+                    playbackDesired = playbackDesired,
+                    selectedChannel = selectedChannel,
+                    transitionedChannel = channel,
+                    reason = reason,
+                )
+            ) {
+                reconnectAttempt = 0
+                connectToSelectedStream(RadioPlaybackState.Connecting)
+                return
+            }
+
             if (channel == lastKnownPlayerChannel) {
                 return
             }
@@ -933,7 +1177,7 @@ class RadioPlaybackService : MediaSessionService() {
 
             syncCurrentMediaItemMetadata()
 
-            if (_selectedChannel.value != channel) {
+            if (selectedChannel != channel) {
                 setChannel(channel)
             } else {
                 publishCachedArtForSelectedChannel(channel)

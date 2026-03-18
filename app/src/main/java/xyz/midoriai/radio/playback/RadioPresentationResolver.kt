@@ -65,9 +65,9 @@ internal fun toChannelLabel(channel: String): String {
     }
 }
 
-internal fun toChannelSubtitle(channel: String): String {
+internal fun toChannelDisplayName(channel: String): String {
     val normalized = normalizePersistedChannel(channel)
-    val displayChannel = if (normalized == "all") {
+    return if (normalized == "all") {
         "All"
     } else {
         normalized.replaceFirstChar { first ->
@@ -78,6 +78,8 @@ internal fun toChannelSubtitle(channel: String): String {
             }
         }
     }
+}
 
-    return "Midori AI Radio: $displayChannel"
+internal fun toChannelSubtitle(channel: String): String {
+    return "Midori AI Radio: ${toChannelDisplayName(channel)}"
 }
