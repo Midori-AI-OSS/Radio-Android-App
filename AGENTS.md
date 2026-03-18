@@ -10,6 +10,7 @@ This repository is an Android app (Kotlin + Jetpack Compose) built with Gradle. 
 - **`app/build.gradle.kts` + root Gradle files**: Build/dependency configuration.
 - **`buildapk.sh` and `scripts/run-build-konsole.sh`**: Dockerized APK build/install workflow.
 - **`.agents/modes/`**: Contributor role instructions.
+- **`UI_UX_STANDARDS.md`**: UI/UX patterns, theming, and styling conventions.
 - Additional directories may include their own `AGENTS.md`. Those files take precedence for the directory tree they reside in.
 
 ---
