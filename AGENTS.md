@@ -23,9 +23,12 @@ This repository is an Android app (Kotlin + Jetpack Compose) built with Gradle. 
 - Minimal documentation, minimal logging: prefer reading code and docstrings; do not add docs/logs unless required to diagnose a specific issue or prevent a crash.
 - Naming policy: use `midoriai`, `Midori AI`, or `Midori-AI`; do not introduce branding tokens that omit `ai`.
 - Run the project checks that apply to your change and record exact commands:
-  - `./gradlew test`
-  - `./gradlew :app:assembleDebug`
+  - `./gradlew test` (prefer Dockerized execution via the PixelArch container when Docker is available on the host)
+  - `./gradlew :app:assembleDebug` (prefer Dockerized execution via the PixelArch container when Docker is available on the host)
   - `./buildapk.sh` (only when APK/device install validation is needed and Docker + adb are available)
+  - PixelArch container hints:
+    - Build the PixelArch image whenever it is not already available.
+    - Run Gradle verification commands inside that image for consistent tooling.
 - Keep code, configuration, and documentation changes in sync. When you update behavior, review nearby docs for accuracy.
 - Use structured commit messages such as `[TYPE] Concise summary` and keep pull request descriptions short and outcome focused.
 - Break large efforts into reviewable commits or tasks. Reference related issues, design docs, or feedback files directly in your commits and PRs.
