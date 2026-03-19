@@ -54,7 +54,7 @@ import xyz.midoriai.radio.ui.screens.nowplaying.RadioPlaybackState
 
 @UnstableApi
 class RadioPlaybackService : MediaLibraryService() {
-    private val reconnectDelaysMs: List<Long> = listOf(1000L, 2000L, 4000L, 8000L, 16000L, 30000L)
+    private val reconnectDelaysMs: List<Long> = listOf(50L, 100L, 200L, 400L, 800L, 1500L)
     private val playingMetadataPollIntervalMs = 5000L
     private val idleMetadataPollIntervalMs = 20000L
     private val channelRefreshIntervalMs = 60000L
