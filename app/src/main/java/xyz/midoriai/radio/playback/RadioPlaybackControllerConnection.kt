@@ -85,9 +85,13 @@ class RadioPlaybackControllerConnection(
     }
 
     fun selectAdjacentChannel(direction: Int) {
-        when {
-            direction > 0 -> withController { it.seekToNextMediaItem() }
-            direction < 0 -> withController { it.seekToPreviousMediaItem() }
+        val request = createAdjacentChannelSessionCommandRequest(direction) ?: return
+
+        withController { controller ->
+            controller.sendCustomCommand(
+                SELECT_ADJACENT_CHANNEL_SESSION_COMMAND,
+                bundleOf(ARG_DIRECTION to request.direction),
+            )
         }
     }
 

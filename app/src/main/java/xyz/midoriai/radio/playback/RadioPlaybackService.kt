@@ -302,15 +302,13 @@ class RadioPlaybackService : MediaLibraryService() {
     }
 
     private fun selectAdjacentChannel(direction: Int) {
-        val available = _channels.value
-        if (available.isEmpty() || direction == 0) {
-            return
-        }
+        val adjacentChannel = resolveAdjacentChannelSelection(
+            selectedChannel = _selectedChannel.value,
+            availableChannels = _channels.value,
+            direction = direction,
+        ) ?: return
 
-        val selected = normalizePersistedChannel(_selectedChannel.value)
-        val currentIndex = available.indexOf(selected).let { if (it >= 0) it else 0 }
-        val nextIndex = floorMod(currentIndex + direction, available.size)
-        setChannel(available[nextIndex])
+        setChannel(adjacentChannel)
     }
 
     private fun setQuality(quality: String) {
@@ -1040,6 +1038,7 @@ class RadioPlaybackService : MediaLibraryService() {
             controller: ControllerInfo,
         ): ConnectionResult {
             val sessionCommands = ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
+                .add(SELECT_ADJACENT_CHANNEL_SESSION_COMMAND)
                 .add(SET_QUALITY_SESSION_COMMAND)
                 .build()
 
@@ -1056,6 +1055,14 @@ class RadioPlaybackService : MediaLibraryService() {
             customCommand: SessionCommand,
             args: Bundle,
         ): ListenableFuture<SessionResult> {
+            parseAdjacentChannelSessionCommandRequest(
+                customAction = customCommand.customAction,
+                direction = args.getInt(ARG_DIRECTION),
+            )?.let { request ->
+                selectAdjacentChannel(request.direction)
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+
             return when (customCommand.customAction) {
                 CUSTOM_COMMAND_SET_QUALITY -> {
                     setQuality(args.getString(ARG_QUALITY).orEmpty())
