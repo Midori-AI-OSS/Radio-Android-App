@@ -8,7 +8,6 @@ import android.util.Log
 import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
-import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
@@ -89,43 +88,12 @@ class RadioPlaybackService : MediaLibraryService() {
     }
 
     private val sessionPlayer: Player by lazy {
-        object : ForwardingPlayer(player) {
-            override fun play() {
-                this@RadioPlaybackService.play()
-            }
-
-            override fun pause() {
-                this@RadioPlaybackService.pausePlayback()
-            }
-
-            override fun setPlayWhenReady(playWhenReady: Boolean) {
-                if (playWhenReady) {
-                    this@RadioPlaybackService.play()
-                } else {
-                    this@RadioPlaybackService.pausePlayback()
-                }
-            }
-
-            override fun stop() {
-                this@RadioPlaybackService.pausePlayback()
-            }
-
-            override fun seekToNextMediaItem() {
-                this@RadioPlaybackService.selectAdjacentChannel(1)
-            }
-
-            override fun seekToPreviousMediaItem() {
-                this@RadioPlaybackService.selectAdjacentChannel(-1)
-            }
-
-            override fun seekToNext() {
-                this@RadioPlaybackService.selectAdjacentChannel(1)
-            }
-
-            override fun seekToPrevious() {
-                this@RadioPlaybackService.selectAdjacentChannel(-1)
-            }
-        }
+        RadioSessionPlayer(
+            player = player,
+            onPlay = this::play,
+            onPause = this::pausePlayback,
+            onSelectAdjacentChannel = this::selectAdjacentChannel,
+        )
     }
 
     private var mediaSession: MediaLibrarySession? = null
