@@ -4,6 +4,15 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+val ciVersionCode = providers.gradleProperty("ciVersionCode")
+    .orElse(providers.environmentVariable("CI_VERSION_CODE"))
+    .orNull
+    ?.toIntOrNull()
+
+val ciVersionName = providers.gradleProperty("ciVersionName")
+    .orElse(providers.environmentVariable("CI_VERSION_NAME"))
+    .orNull
+
 android {
     namespace = "xyz.midoriai.radio"
     compileSdk = 34
@@ -12,8 +21,8 @@ android {
         applicationId = "xyz.midoriai.radio"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = ciVersionCode ?: 1
+        versionName = ciVersionName ?: "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
