@@ -520,7 +520,7 @@ class RadioPlaybackService : MediaLibraryService() {
             .setDisplayTitle(channelTitle)
             .setArtist(toChannelSubtitle(normalizedChannel))
 
-        // Channels the API reports without art (blank artUrl) intentionally carry no artworkUri.
+        // Artwork is absent until the fetch completes or when the API reports no art.
         artByChannel[normalizedChannel]
             ?.artUrl
             ?.takeIf { it.isNotBlank() }

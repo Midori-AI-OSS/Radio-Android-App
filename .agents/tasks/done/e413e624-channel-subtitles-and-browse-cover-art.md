@@ -3,7 +3,7 @@
 - Status: done
 - Source: user-approved change (channel subtitle branding + browse cover art)
 - Owner: coder
-- Depends on: 036b4428 (issue #3 closeout)
+- Depends on: none (user-approved independent change)
 
 ## Goal
 
@@ -29,7 +29,7 @@ Remove the "Midori AI Radio: " prefix from channel subtitles so channel metadata
   - `onGetChildren(RADIO_BROWSE_ROOT_ID)` schedules `refreshBrowseArtCoverage(channels)` before building the channel items, so every browse channel's art is fetched in the background.
   - `refreshBrowseArtCoverage` normalizes+dedupes the channel list and launches a `serviceScope` coroutine calling the existing `fetchArtForChannel(..., forceRefresh = false, isPrefetch = true)` per channel; bounded by the existing in-flight dedupe and the 15s prefetch cooldown (stale cached channels get refreshed, hence "coverage" also refreshes).
   - `fetchArtForChannel` now returns `Boolean` (effective artwork changed and channel still in the catalog). Notifications moved to the callers: `refreshSelectedAndAdjacentArt` notifies per changed artwork (selected + each adjacent), `refreshBrowseArtCoverage` aggregates and emits at most one `notifyBrowseRootChildrenChanged()` per coverage pass. Blank→blank does not notify; no infinite loop (notify → re-query → cooldown skips).
-  - `buildLibraryChannelItem` documents the no-art exception inline: channels the API reports without art (blank artUrl) intentionally carry no `artworkUri`.
+   - `buildLibraryChannelItem` documents that artwork is absent until its background fetch completes or when the API reports no art.
 - Root/album branding untouched (`app_name` root title, `albumTitle`, non-selected playlist artist, "Browse channels" root artist).
 - Tests:
   - `RadioPresentationResolverTest.kt`: subtitle assertions updated to `"All"` / `"Chill"`; added `toChannelSubtitle` prefix-omission tests and `hasArtworkChanged` unit tests (arrival, unchanged, new URL, loss, blank→blank).
@@ -52,7 +52,7 @@ Behavior preserved: `refreshSelectedAndAdjacentArt` still notifies the browse tr
 - [x] Root title/subtitle and channel `albumTitle` branding (`app_name`, "Browse channels") are unchanged
 - [ ] `./gradlew test` passes, including updated `RadioPresentationResolverTest` subtitle assertions (deferred: no JDK/Docker on this host — run in PixelArch/CI)
 - [ ] `./gradlew :app:assembleDebug` succeeds (deferred: no JDK/Docker on this host — run in PixelArch/CI)
-- [x] Every channel item in `onGetChildren(RADIO_BROWSE_ROOT_ID)` has a non-blank `artworkUri` (each documented exception justified — API-reported blank art intentionally carries none, documented in `buildLibraryChannelItem`)
+- [x] After background coverage completes, every channel with API-reported art has a non-blank `artworkUri`; initial fetches and API-reported blank art intentionally carry none
 - [x] Artwork updates propagate to the browse tree (browse children refresh when art arrives)
 
 ## Verification
@@ -68,4 +68,4 @@ Behavior preserved: `refreshSelectedAndAdjacentArt` still notifies the browse tr
 
 - Only the channel-subtitle prefix is removed; app/album/root branding tokens stay untouched.
 - Reuse the existing `artByChannel` cache and fetch path; avoid new background-fetch machinery beyond what is needed to cover all channels and refresh the browse tree on art arrival.
-- Positioned after the issue #3 queue because it edits files the queue also touches (`RadioPlaybackService.kt`, `RadioPresentationResolver.kt`, `RadioPresentationResolverTest.kt`); implement against the modernized stack.
+- This user-approved change is independent of the issue #3 task queue.
