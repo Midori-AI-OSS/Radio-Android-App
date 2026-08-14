@@ -264,7 +264,7 @@ class RadioPlaybackService : MediaLibraryService() {
         channelSwitchJob = null
 
         player.playWhenReady = false
-        player.pause()
+        player.stop()
         player.volume = playerVolumeNormal
         _playbackState.value = RadioPlaybackState.Stopped
     }
