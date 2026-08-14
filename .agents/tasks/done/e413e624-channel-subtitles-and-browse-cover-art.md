@@ -28,12 +28,23 @@ Remove the "Midori AI Radio: " prefix from channel subtitles so channel metadata
 - `RadioPlaybackService.kt`:
   - `onGetChildren(RADIO_BROWSE_ROOT_ID)` schedules `refreshBrowseArtCoverage(channels)` before building the channel items, so every browse channel's art is fetched in the background.
   - `refreshBrowseArtCoverage` normalizes+dedupes the channel list and launches a `serviceScope` coroutine calling the existing `fetchArtForChannel(..., forceRefresh = false, isPrefetch = true)` per channel; bounded by the existing in-flight dedupe and the 15s prefetch cooldown (stale cached channels get refreshed, hence "coverage" also refreshes).
-  - `fetchArtForChannel` Success branch now snapshots the previous cached payload and calls `notifyBrowseRootChildrenChanged()` when `hasArtworkChanged(...)` and the channel is still in the catalog, so art arrival/loss/change surfaces in the browse tree. Blank→blank does not notify; no infinite loop (notify → re-query → cooldown skips).
+  - `fetchArtForChannel` now returns `Boolean` (effective artwork changed and channel still in the catalog). Notifications moved to the callers: `refreshSelectedAndAdjacentArt` notifies per changed artwork (selected + each adjacent), `refreshBrowseArtCoverage` aggregates and emits at most one `notifyBrowseRootChildrenChanged()` per coverage pass. Blank→blank does not notify; no infinite loop (notify → re-query → cooldown skips).
   - `buildLibraryChannelItem` documents the no-art exception inline: channels the API reports without art (blank artUrl) intentionally carry no `artworkUri`.
 - Root/album branding untouched (`app_name` root title, `albumTitle`, non-selected playlist artist, "Browse channels" root artist).
 - Tests:
   - `RadioPresentationResolverTest.kt`: subtitle assertions updated to `"All"` / `"Chill"`; added `toChannelSubtitle` prefix-omission tests and `hasArtworkChanged` unit tests (arrival, unchanged, new URL, loss, blank→blank).
-  - `RadioPlaybackBrowseArtCoverageTest.kt` (new, mirrors `RadioPlaybackPauseStopTest` source-scanning style): asserts the browse root triggers coverage, coverage reuses the prefetch path off the browse thread, and art arrival notifies the browse tree.
+  - `RadioPlaybackBrowseArtCoverageTest.kt` (new, mirrors `RadioPlaybackPauseStopTest` source-scanning style): asserts the browse root triggers coverage, coverage reuses the prefetch path off the browse thread, `fetchArtForChannel` reports effective artwork changes to callers without notifying itself, coverage emits at most one browse notification per pass (guarded by an `artworkChanged` flag), `refreshSelectedAndAdjacentArt` preserves per-change notifications, and failed fetches record their attempt in the per-channel cooldown map.
+
+## Audit follow-up (fix commit: this commit)
+
+Findings from the T10 audit of the cover-art implementation:
+
+1. **Notification amplification**: the all-channel coverage pass called `notifyBrowseRootChildrenChanged()` once per changed channel, so a large catalog could emit many browse-root notifications per browse query.
+   - Fix: `fetchArtForChannel` no longer notifies; `refreshBrowseArtCoverage` aggregates changes and emits **at most one** `notifyBrowseRootChildrenChanged()` per pass, only when at least one channel's artwork actually changed.
+2. **Failed fetches bypassed the cooldown**: `artFetchAtMsByChannel` was only written on success, so the prefetch cooldown (`cached != null` gate) never applied to channels whose fetch failed — they were re-requested on every browse query.
+   - Fix: the `RadioApiResult.Failure` branch and the generic exception catch now record `artFetchAtMsByChannel[normalizedChannel] = System.currentTimeMillis()`; the prefetch gate now also skips when `lastFetchAt > 0L`, so failed channels are retried at most once per `adjacentArtPrefetchCooldownMs` (15s) instead of per query.
+
+Behavior preserved: `refreshSelectedAndAdjacentArt` still notifies the browse tree per changed artwork (selected + each adjacent), and forced selected refreshes (`isPrefetch = false`) are unaffected by the cooldown.
 
 ## Acceptance criteria
 
@@ -46,12 +57,12 @@ Remove the "Midori AI Radio: " prefix from channel subtitles so channel metadata
 
 ## Verification
 
-- Implemented against commit `3a59240` on branch `midoriaiagents/06caea82e6`; code+tests commit: `22a4b17`; task closeout commit: this commit.
+- Implemented against commit `3a59240` on branch `midoriaiagents/06caea82e6`; code+tests commit: `22a4b17`; task closeout commit: that commit; audit follow-up commit: this commit.
 - Local verification was not possible: this host has no JDK (no `java` on PATH, no JVM under `/usr/lib/jvm`, `/opt`, or SDKMAN dirs, `JAVA_HOME` empty) and no Docker (`docker info` fails), so `./gradlew test` / `./gradlew :app:assembleDebug` could not be executed.
 - To verify (PixelArch container or CI with Docker), run:
   - `./gradlew test`
   - `./gradlew :app:assembleDebug`
-- Source-scanning test regexes verified against `RadioPlaybackService.kt` (each extraction target matches exactly once and terminates at the correct closing brace).
+- Source-scanning test regexes re-verified against the post-fix `RadioPlaybackService.kt` (each extraction target matches exactly once and terminates at the correct closing brace; 17 assertions checked locally via a Python mirror of the exact regexes — Kotlin execution still deferred).
 
 ## Notes
 

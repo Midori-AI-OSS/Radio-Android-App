@@ -807,21 +807,29 @@ class RadioPlaybackService : MediaLibraryService() {
         forceSelectedRefresh: Boolean,
     ) {
         val normalizedSelected = normalizePersistedChannel(selected)
-        fetchArtForChannel(
-            channel = normalizedSelected,
-            forceRefresh = forceSelectedRefresh,
-            isPrefetch = false,
-        )
+        if (
+            fetchArtForChannel(
+                channel = normalizedSelected,
+                forceRefresh = forceSelectedRefresh,
+                isPrefetch = false,
+            )
+        ) {
+            notifyBrowseRootChildrenChanged()
+        }
 
         val adjacentChannels = selectedAndAdjacentChannels(normalizedSelected)
             .filter { it != normalizedSelected }
 
         adjacentChannels.forEach { channel ->
-            fetchArtForChannel(
-                channel = channel,
-                forceRefresh = false,
-                isPrefetch = true,
-            )
+            if (
+                fetchArtForChannel(
+                    channel = channel,
+                    forceRefresh = false,
+                    isPrefetch = true,
+                )
+            ) {
+                notifyBrowseRootChildrenChanged()
+            }
         }
     }
 
@@ -829,7 +837,7 @@ class RadioPlaybackService : MediaLibraryService() {
         channel: String,
         forceRefresh: Boolean,
         isPrefetch: Boolean,
-    ) {
+    ): Boolean {
         val normalizedChannel = normalizePersistedChannel(channel)
         val selected = normalizePersistedChannel(_selectedChannel.value)
         val cached = artByChannel[normalizedChannel]
@@ -841,43 +849,45 @@ class RadioPlaybackService : MediaLibraryService() {
             _art.value = cached
         }
 
-        if (isPrefetch && cached != null && withinPrefetchCooldown) {
-            return
+        if (isPrefetch && withinPrefetchCooldown && (cached != null || lastFetchAt > 0L)) {
+            return false
         }
 
         if (!isPrefetch && !forceRefresh && cached != null) {
-            return
+            return false
         }
 
         if (!artFetchInFlight.add(normalizedChannel)) {
-            return
+            return false
         }
 
         try {
-            when (val result = api.fetchArt(channel = normalizedChannel)) {
+            return when (val result = api.fetchArt(channel = normalizedChannel)) {
                 is RadioApiResult.Success -> {
                     val payload = result.data
                     val previous = artByChannel[normalizedChannel]
                     artByChannel[normalizedChannel] = payload
                     artFetchAtMsByChannel[normalizedChannel] = System.currentTimeMillis()
 
-                    if (
-                        hasArtworkChanged(previous, payload) &&
-                        normalizedChannel in ensureAllChannel(_channels.value)
-                    ) {
-                        notifyBrowseRootChildrenChanged()
-                    }
-
                     if (normalizedChannel == normalizePersistedChannel(_selectedChannel.value)) {
                         _art.value = payload
                     }
+
+                    hasArtworkChanged(previous, payload) &&
+                        normalizedChannel in ensureAllChannel(_channels.value)
                 }
 
-                is RadioApiResult.Failure -> { }
+                is RadioApiResult.Failure -> {
+                    artFetchAtMsByChannel[normalizedChannel] = System.currentTimeMillis()
+                    false
+                }
             }
         } catch (exc: CancellationException) {
             throw exc
-        } catch (_: Exception) { } finally {
+        } catch (_: Exception) {
+            artFetchAtMsByChannel[normalizedChannel] = System.currentTimeMillis()
+            return false
+        } finally {
             artFetchInFlight.remove(normalizedChannel)
         }
     }
@@ -887,12 +897,16 @@ class RadioPlaybackService : MediaLibraryService() {
             .map(::normalizePersistedChannel)
             .distinct()
         serviceScope.launch {
+            var artworkChanged = false
             normalizedChannels.forEach { channel ->
-                fetchArtForChannel(
+                artworkChanged = fetchArtForChannel(
                     channel = channel,
                     forceRefresh = false,
                     isPrefetch = true,
-                )
+                ) || artworkChanged
+            }
+            if (artworkChanged) {
+                notifyBrowseRootChildrenChanged()
             }
         }
     }
