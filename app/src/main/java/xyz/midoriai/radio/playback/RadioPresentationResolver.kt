@@ -112,5 +112,11 @@ internal fun toChannelDisplayName(channel: String): String {
 }
 
 internal fun toChannelSubtitle(channel: String): String {
-    return "Midori AI Radio: ${toChannelDisplayName(channel)}"
+    return toChannelDisplayName(channel)
+}
+
+internal fun hasArtworkChanged(previous: ArtPayload?, updated: ArtPayload?): Boolean {
+    val previousUri = previous?.artUrl?.takeIf { it.isNotBlank() }
+    val updatedUri = updated?.artUrl?.takeIf { it.isNotBlank() }
+    return previousUri != updatedUri
 }

@@ -520,6 +520,7 @@ class RadioPlaybackService : MediaLibraryService() {
             .setDisplayTitle(channelTitle)
             .setArtist(toChannelSubtitle(normalizedChannel))
 
+        // Channels the API reports without art (blank artUrl) intentionally carry no artworkUri.
         artByChannel[normalizedChannel]
             ?.artUrl
             ?.takeIf { it.isNotBlank() }
@@ -856,8 +857,16 @@ class RadioPlaybackService : MediaLibraryService() {
             when (val result = api.fetchArt(channel = normalizedChannel)) {
                 is RadioApiResult.Success -> {
                     val payload = result.data
+                    val previous = artByChannel[normalizedChannel]
                     artByChannel[normalizedChannel] = payload
                     artFetchAtMsByChannel[normalizedChannel] = System.currentTimeMillis()
+
+                    if (
+                        hasArtworkChanged(previous, payload) &&
+                        normalizedChannel in ensureAllChannel(_channels.value)
+                    ) {
+                        notifyBrowseRootChildrenChanged()
+                    }
 
                     if (normalizedChannel == normalizePersistedChannel(_selectedChannel.value)) {
                         _art.value = payload
@@ -870,6 +879,21 @@ class RadioPlaybackService : MediaLibraryService() {
             throw exc
         } catch (_: Exception) { } finally {
             artFetchInFlight.remove(normalizedChannel)
+        }
+    }
+
+    private fun refreshBrowseArtCoverage(channels: List<String>) {
+        val normalizedChannels = channels
+            .map(::normalizePersistedChannel)
+            .distinct()
+        serviceScope.launch {
+            normalizedChannels.forEach { channel ->
+                fetchArtForChannel(
+                    channel = channel,
+                    forceRefresh = false,
+                    isPrefetch = true,
+                )
+            }
         }
     }
 
@@ -1076,8 +1100,11 @@ class RadioPlaybackService : MediaLibraryService() {
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
             val items = when (parentId) {
-                RADIO_BROWSE_ROOT_ID -> ensureAllChannel(_channels.value)
-                    .map(::buildLibraryChannelItem)
+                RADIO_BROWSE_ROOT_ID -> {
+                    val channels = ensureAllChannel(_channels.value)
+                    refreshBrowseArtCoverage(channels)
+                    channels.map(::buildLibraryChannelItem)
+                }
                 else -> emptyList()
             }
 

@@ -1,8 +1,10 @@
 package xyz.midoriai.radio.playback
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import xyz.midoriai.radio.radioapi.ArtPayload
@@ -38,7 +40,7 @@ class RadioPresentationResolverTest {
 
         assertEquals("all", result.normalizedSelectedChannel)
         assertEquals("All", result.channelLabel)
-        assertEquals("Midori AI Radio: All", result.channelSubtitle)
+        assertEquals("All", result.channelSubtitle)
         assertEquals("Dream Circuit", result.trackTitle)
         assertEquals("track-123", result.trackId)
         assertEquals("https://radio.midori-ai.xyz/art/track-123.jpg", result.artUrl)
@@ -92,7 +94,7 @@ class RadioPresentationResolverTest {
 
         assertEquals("chill", result.normalizedSelectedChannel)
         assertEquals("chill", result.channelLabel)
-        assertEquals("Midori AI Radio: Chill", result.channelSubtitle)
+        assertEquals("Chill", result.channelSubtitle)
         assertEquals("Fetching current track...", result.trackTitle)
         assertEquals("track-art-only", result.trackId)
         assertEquals("https://radio.midori-ai.xyz/art/track-art-only.jpg", result.artUrl)
@@ -127,5 +129,91 @@ class RadioPresentationResolverTest {
         )
 
         assertEquals(baseUrl, result)
+    }
+
+    @Test
+    fun toChannelSubtitle_showsOnlyTheChannelName() {
+        assertEquals("All", toChannelSubtitle("all"))
+        assertEquals("All", toChannelSubtitle(" ALL "))
+        assertEquals("Chill", toChannelSubtitle("chill"))
+        assertEquals("Lo-fi focus", toChannelSubtitle("lo-fi focus"))
+    }
+
+    @Test
+    fun toChannelSubtitle_neverContainsBrandPrefix() {
+        listOf("all", "chill", "focus", "lo-fi", "late night").forEach { channel ->
+            assertFalse(
+                "toChannelSubtitle(\"$channel\") must omit the Midori AI Radio: prefix",
+                toChannelSubtitle(channel).contains("Midori AI Radio"),
+            )
+        }
+    }
+
+    @Test
+    fun hasArtworkChanged_detectsArtArrival() {
+        assertTrue(
+            hasArtworkChanged(
+                previous = null,
+                updated = artPayload(artUrl = "https://radio.midori-ai.xyz/art/track-123.jpg"),
+            ),
+        )
+    }
+
+    @Test
+    fun hasArtworkChanged_ignoresUnchangedArt() {
+        val payload = artPayload(artUrl = "https://radio.midori-ai.xyz/art/track-123.jpg")
+
+        assertFalse(hasArtworkChanged(previous = payload, updated = payload))
+        assertFalse(
+            hasArtworkChanged(
+                previous = payload,
+                updated = artPayload(artUrl = "https://radio.midori-ai.xyz/art/track-123.jpg"),
+            ),
+        )
+    }
+
+    @Test
+    fun hasArtworkChanged_detectsNewArtUrl() {
+        assertTrue(
+            hasArtworkChanged(
+                previous = artPayload(artUrl = "https://radio.midori-ai.xyz/art/track-old.jpg"),
+                updated = artPayload(artUrl = "https://radio.midori-ai.xyz/art/track-new.jpg"),
+            ),
+        )
+    }
+
+    @Test
+    fun hasArtworkChanged_detectsArtLoss() {
+        val previous = artPayload(artUrl = "https://radio.midori-ai.xyz/art/track-123.jpg")
+        val lost = ArtPayload(
+            channel = "all",
+            trackId = "track-123",
+            hasArt = false,
+            artUrl = "",
+        )
+
+        assertTrue(hasArtworkChanged(previous = previous, updated = lost))
+    }
+
+    @Test
+    fun hasArtworkChanged_ignoresBlankToBlank() {
+        val blank = ArtPayload(
+            channel = "all",
+            trackId = "track-123",
+            hasArt = false,
+            artUrl = "",
+        )
+
+        assertFalse(hasArtworkChanged(previous = null, updated = blank))
+        assertFalse(hasArtworkChanged(previous = blank, updated = blank))
+    }
+
+    private fun artPayload(artUrl: String): ArtPayload {
+        return ArtPayload(
+            channel = "all",
+            trackId = "track-123",
+            hasArt = true,
+            artUrl = artUrl,
+        )
     }
 }

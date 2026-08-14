@@ -787,7 +787,7 @@ private fun toChannelSubtitle(channel: String): String {
         }
     }
 
-    return "Midori AI Radio: $displayChannel"
+    return displayChannel
 }
 
 private suspend fun extractPaletteGradient(
