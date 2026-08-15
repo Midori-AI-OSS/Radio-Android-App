@@ -23,7 +23,7 @@ Leave a durable record of the modernization and close out issue #3 with verified
 
 - [ ] Issue #3 comment(s) contain final versions and per-criterion verification results
 - [ ] Any deliberate version pin is documented with a reason (in code comment and/or this task file)
-- [ ] All T1-T8 task files in `.agents/tasks/wip/` have completed status and are archived to `.agents/tasks/done/`
+- [ ] All remaining issue #3 task files (T2-T8) in `.agents/tasks/wip/` have completed status and are archived to `.agents/tasks/done/`
 - [ ] Issue #3 closed only if all acceptance criteria were met; otherwise leave open with the gap described
 
 ## Notes
