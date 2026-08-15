@@ -50,8 +50,8 @@ Behavior preserved: `refreshSelectedAndAdjacentArt` still notifies the browse tr
 
 - [x] No channel subtitle (browse, playlist, in-app Now Playing) contains the "Midori AI Radio: " prefix; subtitles show only the channel name
 - [x] Root title/subtitle and channel `albumTitle` branding (`app_name`, "Browse channels") are unchanged
-- [ ] `./gradlew test` passes, including updated `RadioPresentationResolverTest` subtitle assertions (deferred: no JDK/Docker on this host — run in PixelArch/CI)
-- [ ] `./gradlew :app:assembleDebug` succeeds (deferred: no JDK/Docker on this host — run in PixelArch/CI)
+- [x] `./gradlew test` passes, including updated `RadioPresentationResolverTest` subtitle assertions (auditor-verified 2026-08-15: BUILD SUCCESSFUL, JDK 17 + Android SDK platform 34)
+- [x] `./gradlew :app:assembleDebug` succeeds (auditor-verified 2026-08-15: BUILD SUCCESSFUL, app-debug.apk produced)
 - [x] After background coverage completes, every channel with API-reported art has a non-blank `artworkUri`; initial fetches and API-reported blank art intentionally carry none
 - [x] Artwork updates propagate to the browse tree (browse children refresh when art arrives)
 
