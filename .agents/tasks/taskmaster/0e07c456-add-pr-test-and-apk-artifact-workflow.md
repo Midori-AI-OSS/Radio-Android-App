@@ -38,3 +38,12 @@ Give pull requests against `main` an automated gate: run the unit tests and buil
 - This is a new file, not a refactor of the beta workflow; keep both workflows' setup steps consistent with each other.
 - `./gradlew test` and `./gradlew :app:assembleDebug` must pass locally before opening the PR.
 - Minimal scope: tests + APK artifact only; no release/publish behavior in this workflow.
+
+## Audit (2026-08-15)
+
+- Reviewed implementing commit `00d02d8a492e59ca40217606362022872ba98201` and the current repository state.
+- Confirmed the workflow is scoped to pull requests targeting `main`; its test and dependent build jobs use the required Java/SDK setup, corrected SDK pins, test/build commands, and APK artifact upload configuration.
+- Re-ran `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ./gradlew --no-daemon test` (BUILD SUCCESSFUL, 24 actionable tasks) and `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ./gradlew --no-daemon -PciVersionCode=7 -PciVersionName=0.1.0-pr.7 :app:assembleDebug` (BUILD SUCCESSFUL, 36 actionable tasks).
+- Remote PR execution was not available; the task's recorded local CI-equivalent verification satisfies its stated alternative.
+
+Passed; routed to taskmaster queue.
