@@ -59,3 +59,14 @@ Toolchain: OpenJDK 17.0.20, Gradle wrapper 9.5.0 (AGP 9.1.1, Kotlin 2.4.10), `sd
    `app/build/outputs/apk/debug/*.apk` matches this path (if-no-files-found: error would not trip).
 
 Conclusion: all acceptance criteria met; no version/config drift found between local build and CI config.
+
+## Audit (2026-08-15)
+
+Validated against repo state at 34adc6c. All acceptance criteria re-verified live (Docker unavailable on host; OpenJDK 17.0.20, Gradle wrapper 9.5.0 / AGP 9.1.1 / Kotlin 2.4.10, sdk.dir=/tmp/agents-artifacts/android-sdk):
+- `./gradlew test` -> BUILD SUCCESSFUL; test results: 11 suites / 52 tests / 0 failures / 0 errors / 0 skipped.
+- `./gradlew clean :app:assembleDebug` -> BUILD SUCCESSFUL (37 tasks executed from a clean state).
+- `./gradlew :app:assembleRelease` -> BUILD SUCCESSFUL (47 actionable tasks incl. lintVitalRelease; app-release-unsigned.apk produced).
+- CI-equivalent: `./gradlew --no-daemon -PciVersionCode=1042 -PciVersionName="0.1.0-beta.1042-1a2b3c4d" :app:assembleDebug` -> BUILD SUCCESSFUL; output-metadata.json shows versionCode=1042 / versionName=0.1.0-beta.1042-1a2b3c4d, reproducing the recorded result (the pre-audit debug APK carried the default 1/0.1.0 stamp from a later plain rebuild; default state restored after verification).
+- Workflow `.github/workflows/daily-beta-release.yml` matches all recorded claims: temurin 17, `./gradlew` (wrapper-pinned 9.5.0), `platforms;android-37` + `build-tools;36.0.0`, `-PciVersionCode/-PciVersionName` consumed by `app/build.gradle.kts` (with CI_VERSION_CODE/CI_VERSION_NAME env fallback), artifact glob `app/build/outputs/apk/debug/*.apk` with if-no-files-found: error, workflow_dispatch present.
+
+Passed; routed to taskmaster queue.
