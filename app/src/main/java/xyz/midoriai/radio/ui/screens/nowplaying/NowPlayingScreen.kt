@@ -85,10 +85,12 @@ import java.time.Duration
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
 private const val CHANNEL_TRANSITION_DURATION_MS = 320
+private const val SQUARE_ART_ASPECT_TOLERANCE = 0.05f
 private const val CHANNEL_SWIPE_LOCK_MS = 500L
 private const val GRADIENT_TRANSITION_DURATION_MS = 820
 
@@ -586,38 +588,64 @@ private fun NowPlayingHeroCard(
     artSize: Dp,
     titleStyle: TextStyle,
 ) {
+    // Non-square channel artwork (e.g. 768x1344 portrait) is fully fitted at its
+    // intrinsic aspect ratio; square or unknown artwork keeps the legacy crop.
+    var loadedArtRatio by remember(snapshot.imageCacheKey) { mutableStateOf<Float?>(null) }
+    val artRatio = loadedArtRatio ?: 1f
+    val isSquareArt = abs(artRatio - 1f) <= SQUARE_ART_ASPECT_TOLERANCE
+
     Column(
-        modifier = modifier,
+        modifier = modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        if (!snapshot.artUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(snapshot.artUrl)
-                    .memoryCacheKey(snapshot.imageCacheKey)
-                    .diskCacheKey(snapshot.imageCacheKey)
-                    .crossfade(false)
-                    .build(),
-                contentDescription = snapshot.title,
-                modifier = Modifier
-                    .size(artSize)
-                    .aspectRatio(1f),
-                contentScale = ContentScale.Crop,
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .size(artSize)
-                    .aspectRatio(1f)
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.surfaceVariant,
-                                MaterialTheme.colorScheme.surface,
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (!snapshot.artUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(snapshot.artUrl)
+                        .memoryCacheKey(snapshot.imageCacheKey)
+                        .diskCacheKey(snapshot.imageCacheKey)
+                        .crossfade(false)
+                        .build(),
+                    contentDescription = snapshot.title,
+                    onSuccess = { state ->
+                        val loadedSize = state.painter.intrinsicSize
+                        if (loadedSize.width > 0f && loadedSize.height > 0f) {
+                            val loadedRatio = loadedSize.width / loadedSize.height
+                            if (loadedRatio != loadedArtRatio) {
+                                loadedArtRatio = loadedRatio
+                            }
+                        }
+                    },
+                    modifier = if (isSquareArt) {
+                        Modifier
+                            .size(artSize)
+                            .aspectRatio(1f)
+                    } else {
+                        Modifier.aspectRatio(artRatio)
+                    },
+                    contentScale = if (isSquareArt) ContentScale.Crop else ContentScale.Fit,
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(artSize)
+                        .aspectRatio(1f)
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.surfaceVariant,
+                                    MaterialTheme.colorScheme.surface,
+                                ),
                             ),
                         ),
-                    ),
-            )
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(14.dp))
