@@ -18,7 +18,7 @@ Usage:
 
 Idempotent steps:
   - Install Java 17 (jdk17-openjdk)
-  - Install Android SDK cmdline-tools, platform-tools, platforms;android-37
+  - Install Android SDK cmdline-tools, platform-tools, platforms;android-37.0
     and build-tools;36.0.0 under /tmp/agents-artifacts/android-sdk
   - Set the Gradle cache to /tmp/gradle (GRADLE_USER_HOME, persisted to
     /etc/profile.d/agents-env.sh)
@@ -100,10 +100,10 @@ else
   set -o pipefail
 fi
 
-echo "setup-agents: installing platform-tools, platforms;android-37, build-tools;36.0.0"
+echo "setup-agents: installing platform-tools, platforms;android-37.0, build-tools;36.0.0"
 sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" \
   "platform-tools" \
-  "platforms;android-37" \
+  "platforms;android-37.0" \
   "build-tools;36.0.0"
 
 # --- Warm Gradle dependencies (downloads distribution + deps; validates JDK/SDK) ---

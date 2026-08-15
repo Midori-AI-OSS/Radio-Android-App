@@ -32,7 +32,7 @@ RUN yes | sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" --licenses
 # Midori AI Radio uses compileSdk=37.
 RUN sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" \
         "platform-tools" \
-        "platforms;android-37" \
+        "platforms;android-37.0" \
         "build-tools;36.0.0"
 
 # Container conventions:
