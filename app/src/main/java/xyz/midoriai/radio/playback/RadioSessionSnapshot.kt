@@ -1,7 +1,6 @@
 package xyz.midoriai.radio.playback
 
 import android.os.Bundle
-import androidx.core.os.bundleOf
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import xyz.midoriai.radio.radioapi.ArtPayload
@@ -46,18 +45,33 @@ internal object RadioSessionSnapshotCodec {
             RadioPlaybackState.Stopped -> "stopped"
         }
 
-        return bundleOf(
-            KEY_PLAYBACK_STATE_TYPE to playbackType,
-            KEY_PLAYBACK_SWITCHING_CHANNEL to (playbackState as? RadioPlaybackState.SwitchingChannel)?.channel,
-            KEY_PLAYBACK_RECONNECT_ATTEMPT to (playbackState as? RadioPlaybackState.Reconnecting)?.attempt,
-            KEY_PLAYBACK_RECONNECT_DELAY_MS to (playbackState as? RadioPlaybackState.Reconnecting)?.nextDelayMs,
-            KEY_CURRENT_TRACK_JSON to snapshot.currentTrack?.let { json.encodeToString(CurrentPayload.serializer(), it) },
-            KEY_ART_JSON to snapshot.art?.let { json.encodeToString(ArtPayload.serializer(), it) },
-            KEY_CHANNELS to ArrayList(snapshot.channels),
-            KEY_SELECTED_CHANNEL to snapshot.selectedChannel,
-            KEY_SELECTED_QUALITY to snapshot.selectedQuality,
-            KEY_PENDING_QUALITY to snapshot.pendingQuality,
-        )
+        return Bundle().apply {
+            putString(KEY_PLAYBACK_STATE_TYPE, playbackType)
+            putString(
+                KEY_PLAYBACK_SWITCHING_CHANNEL,
+                (playbackState as? RadioPlaybackState.SwitchingChannel)?.channel,
+            )
+            putInt(
+                KEY_PLAYBACK_RECONNECT_ATTEMPT,
+                (playbackState as? RadioPlaybackState.Reconnecting)?.attempt ?: 0,
+            )
+            putLong(
+                KEY_PLAYBACK_RECONNECT_DELAY_MS,
+                (playbackState as? RadioPlaybackState.Reconnecting)?.nextDelayMs ?: 0L,
+            )
+            putString(
+                KEY_CURRENT_TRACK_JSON,
+                snapshot.currentTrack?.let { json.encodeToString(CurrentPayload.serializer(), it) },
+            )
+            putString(
+                KEY_ART_JSON,
+                snapshot.art?.let { json.encodeToString(ArtPayload.serializer(), it) },
+            )
+            putStringArrayList(KEY_CHANNELS, ArrayList(snapshot.channels))
+            putString(KEY_SELECTED_CHANNEL, snapshot.selectedChannel)
+            putString(KEY_SELECTED_QUALITY, snapshot.selectedQuality)
+            putString(KEY_PENDING_QUALITY, snapshot.pendingQuality)
+        }
     }
 
     fun fromBundle(bundle: Bundle?): RadioSessionSnapshot? {

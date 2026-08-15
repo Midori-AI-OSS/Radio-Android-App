@@ -29,11 +29,11 @@ RUN sudo mkdir -p /tmp/agents-artifacts \
 
 RUN yes | sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" --licenses
 
-# Midori AI Radio uses compileSdk=34.
+# Midori AI Radio uses compileSdk=37.
 RUN sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" \
         "platform-tools" \
-        "platforms;android-34" \
-        "build-tools;34.0.0"
+        "platforms;android-37" \
+        "build-tools;36.0.0"
 
 # Container conventions:
 # - bind-mount the repo at /workspace

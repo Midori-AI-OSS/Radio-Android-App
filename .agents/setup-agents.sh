@@ -4,11 +4,10 @@ set -euo pipefail
 # setup-agents.sh - provision the PixelArch agents container for Midori AI Radio.
 #
 # Conventions (see dockerfile and buildapk.sh):
-# - Runs only inside the PixelArch container (gate below).
+# - Intended for the PixelArch container; `yay` is assumed present (no gates).
 # - Package installation exclusively via `yay -Syu` (no pacman/apt/yay -S).
-# - Never depends on or changes the current working directory; paths are
-#   resolved from the script location and git, and Gradle is invoked with
-#   `-p` (project dir) so this works from any CWD.
+# - Launch from the repository root: the script asserts ./gradlew exists and
+#   invokes Gradle relative to the CWD (no -p, no worktree resolution).
 
 usage() {
   cat <<'EOF'
@@ -18,9 +17,9 @@ Usage:
   setup-agents.sh [--help]
 
 Idempotent steps:
-  - Install Java 17 (jdk17-openjdk) via `yay -Syu`
-  - Install Android SDK cmdline-tools, platform-tools, platforms;android-34
-    and build-tools;34.0.0 under /tmp/agents-artifacts/android-sdk
+  - Install Java 17 (jdk17-openjdk)
+  - Install Android SDK cmdline-tools, platform-tools, platforms;android-37
+    and build-tools;36.0.0 under /tmp/agents-artifacts/android-sdk
   - Set the Gradle cache to /tmp/gradle (GRADLE_USER_HOME, persisted to
     /etc/profile.d/agents-env.sh)
   - Warm Gradle dependencies (gradlew :app:assembleDebug)
@@ -45,16 +44,8 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
-# --- Gate: PixelArch container only ---
-if [ ! -f /etc/os-release ] || ! grep -q "PixelArch" /etc/os-release; then
-  die "PixelArch container required (os-release has no 'PixelArch'); refusing to run on other hosts"
-fi
-command -v yay >/dev/null 2>&1 || die "yay not found in PATH; PixelArch container required"
-
-# --- Paths (no cd / CWD dependence) ---
-script_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
-repo_root="$(git -C "${script_dir}" rev-parse --show-toplevel)" || die "not inside a git worktree: ${script_dir}"
-[ -f "${repo_root}/gradlew" ] || die "gradle wrapper not found: ${repo_root}/gradlew"
+# --- Repository root ---
+[ -f ./gradlew ] || die "gradlew not found; run setup-agents.sh from the repository root"
 
 # --- Target environment ---
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
@@ -65,7 +56,7 @@ export PATH="${ANDROID_SDK_ROOT}/platform-tools:${ANDROID_SDK_ROOT}/cmdline-tool
 
 # Persist for later agent shells (runtime equivalent of the dockerfile ENV).
 sudo tee /etc/profile.d/agents-env.sh >/dev/null <<EOF
-# Managed by ${script_dir}/setup-agents.sh
+# Managed by setup-agents.sh
 export JAVA_HOME=${JAVA_HOME}
 export ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}
 export ANDROID_HOME=${ANDROID_SDK_ROOT}
@@ -76,11 +67,8 @@ EOF
 mkdir -p "${GRADLE_USER_HOME}"
 
 # --- Packages: yay -Syu only ---
-echo "setup-agents: installing Java 17 and build essentials via yay -Syu"
+echo "setup-agents: installing Java 17 and build essentials"
 yay -Syu --noconfirm jdk17-openjdk unzip curl git
-if command -v clean-yay >/dev/null 2>&1; then
-  clean-yay
-fi
 
 # --- Android SDK under /tmp/agents-artifacts/android-sdk ---
 if [ -x "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" ]; then
@@ -112,16 +100,16 @@ else
   set -o pipefail
 fi
 
-echo "setup-agents: installing platform-tools, platforms;android-34, build-tools;34.0.0"
+echo "setup-agents: installing platform-tools, platforms;android-37, build-tools;36.0.0"
 sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" \
   "platform-tools" \
-  "platforms;android-34" \
-  "build-tools;34.0.0"
+  "platforms;android-37" \
+  "build-tools;36.0.0"
 
 # --- Warm Gradle dependencies (downloads distribution + deps; validates JDK/SDK) ---
 echo "setup-agents: warming Gradle dependencies (gradlew :app:assembleDebug)"
-chmod +x "${repo_root}/gradlew"
-"${repo_root}/gradlew" -p "${repo_root}" :app:assembleDebug
+chmod +x ./gradlew
+./gradlew :app:assembleDebug
 
 echo "setup-agents: done"
 echo "setup-agents: java=$("${JAVA_HOME}/bin/java" -version 2>&1 | head -n1)"

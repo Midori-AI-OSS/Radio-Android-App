@@ -67,13 +67,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.palette.graphics.Palette
-import coil.compose.AsyncImage
-import coil.imageLoader
-import coil.request.ImageRequest
-import coil.request.SuccessResult
+import coil3.compose.AsyncImage
+import coil3.imageLoader
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.request.allowHardware
+import coil3.request.crossfade
+import coil3.toBitmap
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -787,7 +789,7 @@ private fun toChannelSubtitle(channel: String): String {
         }
     }
 
-    return "Midori AI Radio: $displayChannel"
+    return displayChannel
 }
 
 private suspend fun extractPaletteGradient(
@@ -803,12 +805,12 @@ private suspend fun extractPaletteGradient(
         .allowHardware(false)
         .build()
 
-    val drawable = when (val result = context.imageLoader.execute(request)) {
-        is SuccessResult -> result.drawable
+    val image = when (val result = context.imageLoader.execute(request)) {
+        is SuccessResult -> result.image
         else -> null
     } ?: return null
 
-    val bitmap = drawable.toBitmap(
+    val bitmap = image.toBitmap(
         width = 196,
         height = 196,
         config = Bitmap.Config.ARGB_8888,
