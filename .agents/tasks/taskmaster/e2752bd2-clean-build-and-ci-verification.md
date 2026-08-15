@@ -70,3 +70,11 @@ Validated against repo state at 34adc6c. All acceptance criteria re-verified liv
 - Workflow `.github/workflows/daily-beta-release.yml` matches all recorded claims: temurin 17, `./gradlew` (wrapper-pinned 9.5.0), `platforms;android-37` + `build-tools;36.0.0`, `-PciVersionCode/-PciVersionName` consumed by `app/build.gradle.kts` (with CI_VERSION_CODE/CI_VERSION_NAME env fallback), artifact glob `app/build/outputs/apk/debug/*.apk` with if-no-files-found: error, workflow_dispatch present.
 
 Passed; routed to taskmaster queue.
+
+## Re-validation (2026-08-15, at a73170a)
+
+Re-verified: `./gradlew test` -> BUILD SUCCESSFUL (52 tests, 0 failures); `./gradlew clean :app:assembleDebug`
+and `:app:assembleRelease` -> BUILD SUCCESSFUL; CI-equivalent
+`-PciVersionCode=1042 -PciVersionName=0.1.0-beta.1042-1a2b3c4d :app:assembleDebug` -> BUILD SUCCESSFUL
+with output-metadata.json showing 1042 / 0.1.0-beta.1042-1a2b3c4d; workflow file matches all recorded
+claims. Passed; routed to taskmaster queue.

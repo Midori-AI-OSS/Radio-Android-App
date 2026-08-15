@@ -39,3 +39,10 @@ Changes: removed `android.builtInKotlin=false`/`android.newDsl=false` (AGP 9 def
 ## Audit (2026-08-15)
 
 Validated against repo state at a83d7c7. All acceptance criteria re-verified live: `./gradlew :app:compileDebugKotlin --rerun-tasks --warning-mode all` -> BUILD SUCCESSFUL, zero warnings; `./gradlew test --rerun-tasks` -> BUILD SUCCESSFUL (24 tasks executed); `./gradlew :app:assembleDebug :app:assembleRelease` -> BUILD SUCCESSFUL incl. lintVitalRelease (Docker unavailable on host; local Gradle wrapper, Java 17, ANDROID_HOME=/tmp/agents-artifacts/android-sdk). Diff review of a83d7c7 confirms migration-only changes: `bundleOf` -> `Bundle().apply` in RadioPlaybackControllerConnection.kt/RadioSessionSnapshot.kt (reconnecting nulls now stored as 0/0L; the read path returns identical defaults), `AcceptedResultBuilder(session)` -> `(session, controller)` in RadioPlaybackService.kt, and removal of `org.jetbrains.kotlin.android` plus the `android.builtInKotlin=false`/`android.newDsl=false` flags. No remaining `bundleOf`/`kotlinOptions`/`composeOptions` usages anywhere in the tree. Passed; routed to taskmaster queue.
+
+## Re-validation (2026-08-15, at a73170a)
+
+Re-verified: `./gradlew :app:compileDebugKotlin --rerun-tasks --warning-mode all` -> BUILD
+SUCCESSFUL, zero warnings; `./gradlew test :app:assembleDebug :app:assembleRelease` -> BUILD
+SUCCESSFUL; no `bundleOf`/`kotlinOptions`/`composeOptions` remain in `app/src`.
+Passed; routed to taskmaster queue.

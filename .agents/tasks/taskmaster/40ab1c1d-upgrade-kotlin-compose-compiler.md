@@ -31,3 +31,9 @@ Move Kotlin (android + serialization plugins) to the current stable release sele
 ## Merge note
 
 T3 cannot execute independently of T2: AGP 9.x auto-upgrades declared KGP below 2.2.10 on the classpath and fails with MISSING_COMPOSE_COMPILER_GRADLE_PLUGIN when Compose is enabled without `org.jetbrains.kotlin.plugin.compose`, so the Kotlin bump must land in the same execution as the AGP bump. Scope and acceptance criteria are merged into `78601278-upgrade-toolchain-kotlin-compose.md`; execute that task instead.
+
+## Final audit (2026-08-15, at a73170a)
+
+This file is a merged/redirect task; its scope and criteria are executed and verified inside
+`78601278-upgrade-toolchain-kotlin-compose.md` (all criteria re-validated there). Resolved by merge;
+routed to taskmaster queue.

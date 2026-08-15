@@ -68,3 +68,11 @@ Move Gradle, AGP, Kotlin, and the Compose compiler setup to the current stable v
 ## Audit (2026-08-15)
 
 Validated against repo state at 460a522. All acceptance criteria re-verified live: `./gradlew --version` -> Gradle 9.5.0; `./gradlew help`, `./gradlew test --rerun-tasks` (24 tasks executed), and `./gradlew :app:assembleDebug --rerun-tasks` (36 tasks executed) all BUILD SUCCESSFUL. Compose plugin wiring, SDK pin mirrors, and absence of library version bumps confirmed via git diff. Passed; routed to taskmaster queue.
+
+## Re-validation (2026-08-15, at a73170a)
+
+Re-verified: `./gradlew --version` -> Gradle 9.5.0; `./gradlew test :app:assembleDebug :app:assembleRelease`
+-> BUILD SUCCESSFUL; Compose plugin wired via `org.jetbrains.kotlin.plugin.compose` with no
+`composeOptions`/`kotlinCompilerExtensionVersion`; CI pins `platforms;android-37`/`build-tools;36.0.0`
+in workflow, setup-agents.sh, and dockerfile; no AndroidX/third-party library bumps in 460a522.
+Passed; routed to taskmaster queue.

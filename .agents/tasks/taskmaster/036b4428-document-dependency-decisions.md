@@ -123,3 +123,10 @@ failing a criterion that no environment-free host can satisfy, the queue was res
 
 Remaining follow-up for a contributor with GitHub access when T7/T8 complete on a device host:
 amend the issue #3 comment with the final on-device per-criterion results and close the issue.
+
+## Final audit (2026-08-15, re-validated at a73170a)
+
+Prior return-to-wip superseded by the Taskmaster resolution above. Re-verified against current repo state:
+pins commented in `app/build.gradle.kts`; T2-T6 archived in `.agents/tasks/done/`; T7/T8 sit in
+`.agents/tasks/wip/` with `Status: blocked-by-environment` and explicit unblock steps; all four
+acceptance criteria hold under the adjusted criterion 3. Passed; routed to taskmaster queue.

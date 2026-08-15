@@ -36,3 +36,9 @@ Do not change build toolchain (Gradle/AGP/Kotlin) versions in this task. Keep an
 ## Audit (2026-08-15)
 
 Validated against repo state at cc1adc9. All acceptance criteria re-verified live: `./gradlew test --rerun-tasks` and `./gradlew :app:assembleDebug --rerun-tasks` both BUILD SUCCESSFUL (compileDebugKotlin, testDebugUnitTest, and assembleDebug all re-executed; Docker unavailable on host, ran with local Gradle wrapper and ANDROID_HOME=/tmp/agents-artifacts/android-sdk). Diff review of `app/build.gradle.kts` confirms every direct dependency matches the T1 targets (BOM 2026.08.00, core-ktx 1.19.0, lifecycle 2.11.0, activity-compose 1.13.0, media3 1.11.0, datastore 1.2.1, material 1.14.0, coil3 3.5.0, okhttp 5.4.0, serialization-json 1.11.0); palette-ktx 1.0.0 and junit 4.13.2 remain pinned with documented reasons; Coil 3 imports migrated in NowPlayingScreen.kt; no toolchain changes in this task. Passed; routed to taskmaster queue.
+
+## Re-validation (2026-08-15, at a73170a)
+
+Re-verified: `./gradlew test :app:assembleDebug :app:assembleRelease` -> BUILD SUCCESSFUL;
+`app/build.gradle.kts` dependency set matches T1 targets; palette-ktx/junit pins documented.
+Passed; routed to taskmaster queue.
