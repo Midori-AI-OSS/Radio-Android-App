@@ -41,3 +41,12 @@ Do not change `app/build.gradle.kts` (compileSdk/targetSdk 37 stays; it already 
 - Evidence of the failure (run 31886563466): `Install Android SDK packages` step — `yes | sdkmanager --licenses >/dev/null`; `sdkmanager "platforms;android-37" "build-tools;36.0.0"` -> `Warning: Failed to find package 'platforms;android-37'` -> `##[error]Process completed with exit code 1.` No later step ran; build_and_release never started.
 - The remote repo's 37-series packages are `platforms;android-37.0`, `platforms;android-37.1`, `platforms;android-37.2-beta1/2/3`; only the stable `platforms;android-37.0` should be pinned.
 - Keep this change minimal: package pin only, no workflow restructuring (PR CI is a separate task, 0e07c456).
+
+## Audit (2026-08-15)
+
+- Reviewed implementing commit `9874f62ec6e79d8214a29cb1911ada26564de726` and the current repository state.
+- Confirmed both workflow SDK-install steps and the setup script and Dockerfile SDK-install commands use `platforms;android-37.0` with `build-tools;36.0.0`; `app/build.gradle.kts` remains unchanged at compileSdk/targetSdk 37.
+- Re-ran `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ./gradlew --no-daemon test` (BUILD SUCCESSFUL, 24 actionable tasks) and `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ./gradlew --no-daemon :app:assembleDebug` (BUILD SUCCESSFUL, 36 actionable tasks).
+- Docker build validation remains outside this task's acceptance criteria and was not run; the Dockerfile package command was directly verified.
+
+Passed; routed to taskmaster queue.
