@@ -79,7 +79,7 @@ class OkHttpRadioApi(
         response.use { resp ->
             val status = resp.code
             val bodyString = try {
-                resp.body?.string()
+                resp.body.string()
             } catch (exc: Exception) {
                 null
             }
