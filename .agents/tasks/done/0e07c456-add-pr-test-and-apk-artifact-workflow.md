@@ -1,6 +1,6 @@
 # [T11] Add PR test and debug-APK artifact workflow
 
-- Status: wip
+- Status: done
 - Source: Approved workstream: PR test/build APK-artifact workflow (no PR-triggered CI exists today; PRs merge with zero checks — e.g., run 31886563466 failed only after PR #7's merge push)
 - Owner: coder
 - Depends on: 0d1416de (SDK package pin correction — the new workflow must use the corrected `platforms;android-37.0` pin)
@@ -18,11 +18,20 @@ Give pull requests against `main` an automated gate: run the unit tests and buil
 
 ## Acceptance criteria
 
-- [ ] New workflow exists and triggers on `pull_request` to `main`
-- [ ] Test job runs `./gradlew --no-daemon test`
-- [ ] Build job runs `:app:assembleDebug` and uploads the APK artifact (`if-no-files-found: error`)
-- [ ] SDK pins in the new workflow are `platforms;android-37.0` and `build-tools;36.0.0`
-- [ ] Verified: a run on a real PR passes, with run URL and results recorded in this file (or the local CI-equivalent commands/results recorded if a PR run is not feasible)
+- [x] New workflow exists and triggers on `pull_request` to `main`
+- [x] Test job runs `./gradlew --no-daemon test`
+- [x] Build job runs `:app:assembleDebug` and uploads the APK artifact (`if-no-files-found: error`)
+- [x] SDK pins in the new workflow are `platforms;android-37.0` and `build-tools;36.0.0`
+- [x] Verified: a run on a real PR passes, with run URL and results recorded in this file (or the local CI-equivalent commands/results recorded if a PR run is not feasible)
+
+## Verification record (2026-08-15)
+
+- No real PR run was possible (no push/PR opened from this environment); local CI-equivalent recorded instead, matching the workflow's exact commands and SDK pins.
+- `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ./gradlew --no-daemon test` -> BUILD SUCCESSFUL (24 tasks)
+- `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ./gradlew --no-daemon -PciVersionCode=7 -PciVersionName=0.1.0-pr.7 :app:assembleDebug` -> BUILD SUCCESSFUL (36 tasks)
+- APK produced at `app/build/outputs/apk/debug/app-debug.apk` (matches the workflow's upload glob `app/build/outputs/apk/debug/*.apk`)
+- Workflow YAML parsed cleanly; structure spot-checked (trigger `pull_request` -> `main`, pins `platforms;android-37.0` + `build-tools;36.0.0` in both jobs, upload with `if-no-files-found: error` and PR-derived artifact name `midoriai-radio-debug-pr-<number>-<short_sha>`)
+- Docker build validation skipped per instruction.
 
 ## Notes
 
