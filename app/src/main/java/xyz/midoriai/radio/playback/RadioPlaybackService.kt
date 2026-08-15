@@ -1048,7 +1048,7 @@ class RadioPlaybackService : MediaLibraryService() {
                 .add(SET_QUALITY_SESSION_COMMAND)
                 .build()
 
-            return ConnectionResult.AcceptedResultBuilder(session)
+            return ConnectionResult.AcceptedResultBuilder(session, controller)
                 .setAvailableSessionCommands(sessionCommands)
                 .setAvailablePlayerCommands(ConnectionResult.DEFAULT_PLAYER_COMMANDS)
                 .setSessionExtras(RadioSessionSnapshotCodec.toBundle(lastPublishedSnapshot ?: snapshotForConnection()))

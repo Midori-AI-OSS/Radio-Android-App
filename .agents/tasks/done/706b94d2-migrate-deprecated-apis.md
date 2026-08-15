@@ -1,6 +1,6 @@
 # [T5] Migrate deprecated APIs and build configuration required by the new stack
 
-- Status: wip
+- Status: done
 - Source: issue #3 (Modernize Android dependency stack and verify Android Auto discovery)
 - Owner: coder
 - Depends on: 05b30b50 (library version upgrades)
@@ -18,11 +18,18 @@ Resolve deprecations and configuration changes surfaced by the upgraded AGP/Kotl
 
 ## Acceptance criteria
 
-- [ ] `./gradlew test` passes
-- [ ] `./gradlew :app:assembleDebug` succeeds
-- [ ] `./gradlew :app:assembleRelease` succeeds
-- [ ] No new deprecation warnings from upgraded APIs in the changed files (or each remaining one is justified)
-- [ ] Behavior unchanged: code diff limited to API migration, not logic changes
+- [x] `./gradlew test` passes
+- [x] `./gradlew :app:assembleDebug` succeeds
+- [x] `./gradlew :app:assembleRelease` succeeds
+- [x] No new deprecation warnings from upgraded APIs in the changed files (or each remaining one is justified)
+- [x] Behavior unchanged: code diff limited to API migration, not logic changes
+
+## Verification
+
+- `./gradlew :app:compileDebugKotlin --rerun-tasks --warning-mode all` -> BUILD SUCCESSFUL, zero warnings
+- `./gradlew test :app:assembleDebug :app:assembleRelease` -> BUILD SUCCESSFUL (incl. lintVitalRelease)
+
+Changes: removed `android.builtInKotlin=false`/`android.newDsl=false` (AGP 9 defaults) and the `org.jetbrains.kotlin.android` plugin (built-in Kotlin); replaced deprecated `bundleOf` with platform `Bundle`; replaced deprecated `AcceptedResultBuilder(MediaSession)` with `(MediaSession, ControllerInfo)`.
 
 ## Notes
 
