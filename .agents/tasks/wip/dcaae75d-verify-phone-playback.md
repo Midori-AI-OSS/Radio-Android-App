@@ -1,6 +1,7 @@
 # [T7] Verify phone playback behavior with the modernized APK
 
-- Status: done
+- Status: wip
+- Auditor note (2026-08-15): returned to wip — acceptance criteria 1 and 3 unmet; none of the playback checks were executed. Fix: run all five checks on a real Android 16 device with adb, record pass/fail per check in this file, and log any regression as a new task file.
 - Source: issue #3 (Modernize Android dependency stack and verify Android Auto discovery)
 - Owner: coder (device required)
 - Depends on: e2752bd2 (clean build + CI verification)
