@@ -1,6 +1,6 @@
 # [T7] Verify phone playback behavior with the modernized APK
 
-- Status: wip
+- Status: blocked-by-environment
 - Auditor note (2026-08-15): returned to wip — acceptance criteria 1 and 3 unmet; none of the playback checks were executed. Fix: run all five checks on a real Android 16 device with adb, record pass/fail per check in this file, and log any regression as a new task file.
 - Source: issue #3 (Modernize Android dependency stack and verify Android Auto discovery)
 - Owner: coder (device required)
@@ -75,3 +75,22 @@ Neither can be installed without a device/adb.
 No regressions to report: the APK was never installed or run, so no playback defect was observed.
 Re-run this task on a host with an attached Android device (Android 16 preferred) and adb available
 before the acceptance criteria can be met.
+
+## Taskmaster resolution (2026-08-15)
+
+Blocked by environment: no Android device, adb, SDK, or Docker exists on this host (evidence
+above), so none of the five playback checks can be executed here. The Auditor bounce stands:
+acceptance criteria 1 and 3 remain unmet by design, not by failure. This file stays in
+`.agents/tasks/wip/` until a device host picks it up.
+
+### Next steps (for a coder on a host with a device)
+
+1. Attach an Android 16 device (preferred, matching issue #3) with working adb.
+2. Sideload the GitHub beta APK (`beta-87-ac4b07ed`, sha256
+   `bd8f2d5714a1044154895bf763df41d4eb4e1b13f9bdec13abb98f74ec52bad5`) or rebuild locally
+   (`./gradlew :app:assembleDebug`).
+3. Execute the five Scope checks; update the per-check table with pass/fail and device/OS.
+4. Any regression: log as a new task file with repro steps; do not fix inline.
+5. With all checks passing, set `Status: done` and archive to `.agents/tasks/done/`.
+
+Unblocking this task unblocks T8 (d6b4fdad), which depends on it.
