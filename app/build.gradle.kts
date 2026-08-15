@@ -2,6 +2,15 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.serialization")
+    id("org.jetbrains.kotlin.plugin.compose")
+}
+
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+    }
 }
 
 val ciVersionCode = providers.gradleProperty("ciVersionCode")
@@ -15,12 +24,12 @@ val ciVersionName = providers.gradleProperty("ciVersionName")
 
 android {
     namespace = "xyz.midoriai.radio"
-    compileSdk = 34
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "xyz.midoriai.radio"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 37
         versionCode = ciVersionCode ?: 1
         versionName = ciVersionName ?: "0.1.0"
 
@@ -45,16 +54,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
-    }
-
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.8"
     }
 
     packaging {

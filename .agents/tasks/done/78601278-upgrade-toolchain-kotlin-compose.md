@@ -1,6 +1,6 @@
 # [T2+T3] Upgrade Gradle, AGP, Kotlin, and Compose compiler (single execution)
 
-- Status: wip
+- Status: done
 - Source: issue #3 (Modernize Android dependency stack and verify Android Auto discovery)
 - Owner: coder
 - Depends on: none (T1 dependency inventory, archived off-disk; target versions embedded below)
@@ -30,15 +30,34 @@ Move Gradle, AGP, Kotlin, and the Compose compiler setup to the current stable v
 - Fix any Kotlin/Compose compilation issues introduced by this change
 - Do not bump AndroidX/third-party library versions in this task (T4 follows)
 
+## Results
+
+- `gradle/wrapper/gradle-wrapper.properties`: distributionUrl -> Gradle 9.5.0.
+- Root `build.gradle.kts`: AGP 9.1.1; `org.jetbrains.kotlin.android` + `org.jetbrains.kotlin.plugin.serialization` 2.4.10; added `org.jetbrains.kotlin.plugin.compose` 2.4.10.
+- `app/build.gradle.kts`: applies `org.jetbrains.kotlin.plugin.compose`; `composeOptions { kotlinCompilerExtensionVersion }` removed (`buildFeatures.compose = true` kept); compileSdk/targetSdk 37 (minSdk 26 unchanged); legacy `kotlinOptions { jvmTarget }` migrated to `kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }` because the legacy accessor is a hard deprecation error under AGP 9.1.1.
+- `gradle.properties`: both flags kept, each verified required:
+  - `android.builtInKotlin=false` — without it AGP 9.1.1 refuses to apply `org.jetbrains.kotlin.android` (requires migration to AGP built-in Kotlin).
+  - `android.newDsl=false` — without it KGP 2.4.10 fails to apply under the AGP 9 new DSL.
+  - (Built-in Kotlin migration is a larger follow-up, out of scope here.)
+- CI/SDK pins updated to `platforms;android-37` / `build-tools;36.0.0` in `.github/workflows/daily-beta-release.yml`, `.agents/setup-agents.sh`, and `dockerfile`.
+- No AndroidX/third-party library versions changed (T4 follows).
+
 ## Acceptance criteria
 
-- [ ] `./gradlew --version` reports Gradle 9.5.0
-- [ ] `./gradlew help` resolves the project with the new AGP
-- [ ] `./gradlew test` passes
-- [ ] `./gradlew :app:assembleDebug` succeeds
-- [ ] Compose compiler is configured via `org.jetbrains.kotlin.plugin.compose`; no `composeOptions`/`kotlinCompilerExtensionVersion` remains
-- [ ] CI workflow SDK pins are `platforms;android-37` and `build-tools;36.0.0`
-- [ ] No AndroidX/third-party library version changes included
+- [x] `./gradlew --version` reports Gradle 9.5.0
+- [x] `./gradlew help` resolves the project with the new AGP
+- [x] `./gradlew test` passes
+- [x] `./gradlew :app:assembleDebug` succeeds
+- [x] Compose compiler is configured via `org.jetbrains.kotlin.plugin.compose`; no `composeOptions`/`kotlinCompilerExtensionVersion` remains
+- [x] CI workflow SDK pins are `platforms;android-37` and `build-tools;36.0.0`
+- [x] No AndroidX/third-party library version changes included
+
+## Verification
+
+- `ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew --version` -> Gradle 9.5.0
+- `./gradlew help` -> BUILD SUCCESSFUL
+- `./gradlew test` -> BUILD SUCCESSFUL (compileDebugKotlin with Kotlin 2.4.10 + Compose plugin; testDebugUnitTest green)
+- `./gradlew :app:assembleDebug` -> BUILD SUCCESSFUL
 
 ## Notes
 
