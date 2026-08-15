@@ -17,7 +17,7 @@ Usage:
   setup-agents.sh [--help]
 
 Idempotent steps:
-  - Install Java 17 (jdk17-openjdk) via `yay -Syu`
+  - Install Java 17 (jdk17-openjdk)
   - Install Android SDK cmdline-tools, platform-tools, platforms;android-34
     and build-tools;34.0.0 under /tmp/agents-artifacts/android-sdk
   - Set the Gradle cache to /tmp/gradle (GRADLE_USER_HOME, persisted to
@@ -67,11 +67,8 @@ EOF
 mkdir -p "${GRADLE_USER_HOME}"
 
 # --- Packages: yay -Syu only ---
-echo "setup-agents: installing Java 17 and build essentials via yay -Syu"
+echo "setup-agents: installing Java 17 and build essentials"
 yay -Syu --noconfirm jdk17-openjdk unzip curl git
-if command -v clean-yay >/dev/null 2>&1; then
-  clean-yay
-fi
 
 # --- Android SDK under /tmp/agents-artifacts/android-sdk ---
 if [ -x "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" ]; then
