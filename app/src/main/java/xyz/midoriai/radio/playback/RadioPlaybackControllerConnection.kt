@@ -2,8 +2,8 @@ package xyz.midoriai.radio.playback
 
 import android.content.ComponentName
 import android.content.Context
+import android.os.Bundle
 import androidx.core.content.ContextCompat
-import androidx.core.os.bundleOf
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
@@ -90,7 +90,7 @@ class RadioPlaybackControllerConnection(
         withController { controller ->
             controller.sendCustomCommand(
                 SELECT_ADJACENT_CHANNEL_SESSION_COMMAND,
-                bundleOf(ARG_DIRECTION to request.direction),
+                Bundle().apply { putInt(ARG_DIRECTION, request.direction) },
             )
         }
     }
@@ -99,7 +99,7 @@ class RadioPlaybackControllerConnection(
         withController { controller ->
             controller.sendCustomCommand(
                 SET_QUALITY_SESSION_COMMAND,
-                bundleOf(ARG_QUALITY to quality),
+                Bundle().apply { putString(ARG_QUALITY, quality) },
             )
         }
     }

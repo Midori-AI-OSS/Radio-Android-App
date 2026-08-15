@@ -96,7 +96,7 @@ jobs:
       - name: Install Android SDK packages
         run: |
           yes | sdkmanager --licenses >/dev/null
-          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+          sdkmanager "platforms;android-37" "build-tools;36.0.0"
 
       - name: Run tests
         run: ./gradlew --no-daemon test
@@ -128,7 +128,7 @@ jobs:
       - name: Install Android SDK packages
         run: |
           yes | sdkmanager --licenses >/dev/null
-          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+          sdkmanager "platforms;android-37" "build-tools;36.0.0"
 
       - name: Build debug APK
         run: ./gradlew --no-daemon -PciVersionCode="${CI_VERSION_CODE}" -PciVersionName="${CI_VERSION_NAME}" :app:assembleDebug
