@@ -1,6 +1,6 @@
 # [T9] Document dependency decisions and close out issue #3
 
-- Status: done
+- Status: wip
 - Source: issue #3 (Modernize Android dependency stack and verify Android Auto discovery)
 - Owner: coder
 - Depends on: d6b4fdad (Android Auto verification)
@@ -93,3 +93,10 @@ depends on the verified outcomes of T6-T8.
 - [x] Any deliberate version pin is documented with a reason (code comment + this task file)
 - [ ] All remaining issue #3 task files (T2-T8) in `.agents/tasks/wip/` have completed status and are archived to `.agents/tasks/done/` — not met, see Gap
 - [x] Issue #3 left open with the gap described (closure requires verified T6-T8 outcomes)
+
+## Audit (2026-08-15)
+
+Returned to wip. Documentation content verified (issue #3 comment, code-comment pins, build results), but the
+third acceptance criterion is unmet: T6/T7/T8 (`e2752bd2`, `dcaae75d`, `d6b4fdad`) still sit in
+`.agents/tasks/wip/` with `Status: wip` and their acceptance criteria unchecked. To pass: complete T6-T8,
+archive their files to `.agents/tasks/done/`, then re-check this criterion.
