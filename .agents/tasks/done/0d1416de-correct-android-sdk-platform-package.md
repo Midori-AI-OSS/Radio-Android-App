@@ -1,6 +1,6 @@
 # [T10] Correct Android SDK platform package pin to platforms;android-37.0
 
-- Status: wip
+- Status: done
 - Source: CI run 31886563466 (Radio App Daily Beta, push to main, 2026-08-15) failure: `Warning: Failed to find package 'platforms;android-37'` then exit code 1
 - Owner: coder
 - Depends on: none
@@ -21,10 +21,20 @@ Do not change `app/build.gradle.kts` (compileSdk/targetSdk 37 stays; it already 
 
 ## Acceptance criteria
 
-- [ ] No `platforms;android-37` (without `.0`) remains in the workflow, setup-agents.sh, or dockerfile
-- [ ] All three files install `platforms;android-37.0` and `build-tools;36.0.0`
-- [ ] `./gradlew test` and `./gradlew :app:assembleDebug` still pass locally
-- [ ] A CI run (push or workflow_dispatch) passes the "Install Android SDK packages" step; record the run URL and result in this file (or record the local CI-equivalent command and result if no CI run is possible)
+- [x] No `platforms;android-37` (without `.0`) remains in the workflow, setup-agents.sh, or dockerfile
+- [x] All three files install `platforms;android-37.0` and `build-tools;36.0.0`
+- [x] `./gradlew test` and `./gradlew :app:assembleDebug` still pass locally
+- [x] A CI run (push or workflow_dispatch) passes the "Install Android SDK packages" step; record the run URL and result in this file (or record the local CI-equivalent command and result if no CI run is possible)
+
+## Verification record (2026-08-15)
+
+- No CI run was possible (no push/trigger performed); local CI-equivalent recorded instead.
+- Local CI-equivalent of the failing step, using the corrected pin (ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk):
+  - `yes | sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" --licenses` -> ok
+  - `sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" "platforms;android-37.0" "build-tools;36.0.0"` -> exit 0, installed `Android SDK Platform 37.0` and build-tools 36.0.0; no `Failed to find package` warning.
+- `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ./gradlew --no-daemon test` -> BUILD SUCCESSFUL (24 tasks)
+- `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ./gradlew --no-daemon :app:assembleDebug` -> BUILD SUCCESSFUL (36 tasks)
+- Docker build validation skipped per instruction; Docker daemon not accessible in this environment.
 
 ## Notes
 
