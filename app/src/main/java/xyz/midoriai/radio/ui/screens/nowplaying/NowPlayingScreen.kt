@@ -658,10 +658,7 @@ private fun NowPlayingHeroCard(
                         .data(snapshot.artUrl)
                         .memoryCacheKey(snapshot.imageCacheKey)
                         .diskCacheKey(snapshot.imageCacheKey)
-                        .crossfade(
-                            durationMillis = ART_CROSSFADE_DURATION_MS,
-                            easing = FastOutSlowInEasing,
-                        )
+                        .crossfade(ART_CROSSFADE_DURATION_MS)
                         .build(),
                     contentDescription = snapshot.title,
                     onSuccess = { state ->
