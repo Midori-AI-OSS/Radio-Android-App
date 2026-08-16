@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -20,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -38,15 +38,18 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -57,6 +60,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -69,7 +73,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.palette.graphics.Palette
+import coil3.annotation.ExperimentalCoilApi
 import coil3.compose.AsyncImage
+import coil3.compose.useExistingImageAsPlaceholder
 import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
@@ -85,12 +91,17 @@ import java.time.Duration
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
+import xyz.midoriai.radio.radioapi.ArtPayload
 
 private const val CHANNEL_TRANSITION_DURATION_MS = 320
+private const val SQUARE_ART_ASPECT_TOLERANCE = 0.05f
 private const val CHANNEL_SWIPE_LOCK_MS = 500L
 private const val GRADIENT_TRANSITION_DURATION_MS = 820
+private const val ART_CROSSFADE_DURATION_MS = 220
+private const val ART_RATIO_TRANSITION_DURATION_MS = 220
 
 @Composable
 fun NowPlayingScreen(
@@ -111,27 +122,57 @@ fun NowPlayingScreen(
         playbackState is RadioPlaybackState.SwitchingChannel
 
     val normalizedSelectedChannel = normalizeChannelKey(selectedChannel)
-    val artForSelectedChannel = art?.takeIf {
-        it.hasArt && normalizeChannelKey(it.channel) == normalizedSelectedChannel
+    val selectedChannelArt = art?.takeIf {
+        normalizeChannelKey(it.channel) == normalizedSelectedChannel
     }
     val currentTrackForSelectedChannel = currentTrack?.takeIf {
         normalizeChannelKey(it.channel) == normalizedSelectedChannel
     }
 
-    val isArtForCurrentTrack = if (currentTrackForSelectedChannel != null && artForSelectedChannel != null) {
-        artForSelectedChannel.trackId == currentTrackForSelectedChannel.trackId
-    } else {
-        true
+    // Art for the selected channel is kept even when its track ID briefly lags the
+    // current track: the service publishes the current track and its art on separate
+    // polls, so a mismatch is transient, not a reason to blank the artwork.
+    //
+    // While art for the selected channel is pending (the service still reports the
+    // previous channel's art, or none yet), the last displayed art stays visible and
+    // is replaced only once real art arrives. It is cleared when the service confirms
+    // the selected channel has no art, so rapid channel switches never leave stale
+    // art stuck on screen.
+    var stickyArt by remember { mutableStateOf<ArtPayload?>(null) }
+    // The painter for the last successfully loaded artwork is retained here so
+    // fresh slide-card AsyncImages can show the previous art instantly and then
+    // crossfade to the new art. It is updated only for the currently displayed
+    // artwork and cleared on a confirmed artless payload.
+    val retainedArtPainter = remember { mutableStateOf<Painter?>(null) }
+    LaunchedEffect(normalizedSelectedChannel, art) {
+        stickyArt = when {
+            selectedChannelArt != null && selectedChannelArt.hasArt &&
+                selectedChannelArt.artUrl.isNotBlank() -> selectedChannelArt
+
+            selectedChannelArt != null -> null
+            else -> stickyArt
+        }
+
+        // A confirmed artless payload also drops the retained artwork painter so
+        // the next artwork never crossfades from stale art.
+        if (selectedChannelArt != null && stickyArt == null) {
+            retainedArtPainter.value = null
+        }
     }
 
-    val artUrl = if (isArtForCurrentTrack) {
-        artForSelectedChannel?.artUrl
-    } else {
-        null
+    val displayArt = when {
+        selectedChannelArt != null && selectedChannelArt.hasArt &&
+            selectedChannelArt.artUrl.isNotBlank() -> selectedChannelArt
+
+        selectedChannelArt != null -> null
+        else -> stickyArt
     }
-    val trackId = currentTrackForSelectedChannel?.trackId ?: artForSelectedChannel?.trackId ?: "unknown"
+
     val trackTitle = currentTrackForSelectedChannel?.title ?: "Fetching current track..."
-    val imageCacheKey = "${normalizedSelectedChannel}_${trackId}_${artUrl.orEmpty()}"
+    val artUrl = displayArt?.artUrl
+    val imageCacheKey = displayArt?.let {
+        "${normalizeChannelKey(it.channel)}_${it.trackId}_${it.artUrl}"
+    } ?: "${normalizedSelectedChannel}_unknown_"
 
     val liveSnapshot = NowPlayingVisualState(
         channel = normalizedSelectedChannel,
@@ -144,6 +185,25 @@ fun NowPlayingScreen(
     var renderedSnapshot by remember { mutableStateOf<NowPlayingVisualState?>(null) }
     var activeTransition by remember { mutableStateOf<HeroTransitionState?>(null) }
     val heroSlideProgress = remember { Animatable(1f) }
+
+    // Intrinsic artwork ratios are hoisted above the hero card and keyed by the
+    // displayed image's cache key so the channel-slide cards and the steady-state
+    // card share each artwork's ratio and never resize a second time. The last
+    // known ratio keeps bounds stable while a new artwork is still loading; a
+    // truly new artwork settles to its intrinsic ratio once, over
+    // ART_RATIO_TRANSITION_DURATION_MS, when its ratio first becomes known.
+    val artworkRatioByCacheKey = remember { mutableStateMapOf<String, Float?>() }
+    val lastKnownArtRatio = remember { mutableStateOf<Float?>(null) }
+
+    // Only successes for the artwork currently on display update the retained
+    // painter; the current key is read through rememberUpdatedState so the guard
+    // is always fresh even for in-flight loads.
+    val currentImageCacheKey by rememberUpdatedState(imageCacheKey)
+    val retainArtworkPainter: (String, Painter) -> Unit = { loadedCacheKey, painter ->
+        if (loadedCacheKey == currentImageCacheKey) {
+            retainedArtPainter.value = painter
+        }
+    }
 
     val liveSnapshotState by rememberUpdatedState(liveSnapshot)
     val context = LocalContext.current
@@ -529,6 +589,10 @@ fun NowPlayingScreen(
                                 snapshot = transition.from,
                                 artSize = artSize,
                                 titleStyle = titleStyle,
+                                artworkRatioByCacheKey = artworkRatioByCacheKey,
+                                lastKnownArtRatio = lastKnownArtRatio,
+                                retainedArtPainter = retainedArtPainter,
+                                retainArtworkPainter = retainArtworkPainter,
                                 modifier = Modifier.graphicsLayer {
                                     translationX = outgoingOffset
                                     alpha = 1f - (0.10f * progress)
@@ -539,6 +603,10 @@ fun NowPlayingScreen(
                                 snapshot = transition.to,
                                 artSize = artSize,
                                 titleStyle = titleStyle,
+                                artworkRatioByCacheKey = artworkRatioByCacheKey,
+                                lastKnownArtRatio = lastKnownArtRatio,
+                                retainedArtPainter = retainedArtPainter,
+                                retainArtworkPainter = retainArtworkPainter,
                                 modifier = Modifier.graphicsLayer {
                                     translationX = incomingOffset
                                     alpha = 0.70f + (0.30f * progress)
@@ -549,6 +617,10 @@ fun NowPlayingScreen(
                                 snapshot = visibleSnapshot,
                                 artSize = artSize,
                                 titleStyle = titleStyle,
+                                artworkRatioByCacheKey = artworkRatioByCacheKey,
+                                lastKnownArtRatio = lastKnownArtRatio,
+                                retainedArtPainter = retainedArtPainter,
+                                retainArtworkPainter = retainArtworkPainter,
                             )
                         }
                     }
@@ -579,45 +651,106 @@ fun NowPlayingScreen(
     }
 }
 
+@OptIn(ExperimentalCoilApi::class)
 @Composable
 private fun NowPlayingHeroCard(
     modifier: Modifier = Modifier,
     snapshot: NowPlayingVisualState,
     artSize: Dp,
     titleStyle: TextStyle,
+    artworkRatioByCacheKey: SnapshotStateMap<String, Float?>,
+    lastKnownArtRatio: MutableState<Float?>,
+    retainedArtPainter: MutableState<Painter?>,
+    retainArtworkPainter: (String, Painter) -> Unit,
 ) {
+    // Non-square channel artwork (e.g. 768x1344 portrait) is fully fitted at its
+    // intrinsic aspect ratio; square or unknown artwork keeps the legacy crop. The
+    // ratio is hoisted above this card and keyed by image cache key, so pending or
+    // crossfading art never resets the bounds and the transition and steady-state
+    // card instances share the same ratio. The 1:1 bounds settle to the intrinsic
+    // ratio over 220ms once a new artwork loads, and only once, instead of
+    // snapping or animating a second time when the channel slide ends.
+    val loadedArtRatio =
+        artworkRatioByCacheKey[snapshot.imageCacheKey] ?: lastKnownArtRatio.value
+    val targetArtRatio = loadedArtRatio ?: 1f
+    val isSquareArt = abs(targetArtRatio - 1f) <= SQUARE_ART_ASPECT_TOLERANCE
+
     Column(
-        modifier = modifier,
+        modifier = modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        if (!snapshot.artUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(snapshot.artUrl)
-                    .memoryCacheKey(snapshot.imageCacheKey)
-                    .diskCacheKey(snapshot.imageCacheKey)
-                    .crossfade(false)
-                    .build(),
-                contentDescription = snapshot.title,
-                modifier = Modifier
-                    .size(artSize)
-                    .aspectRatio(1f),
-                contentScale = ContentScale.Crop,
+        BoxWithConstraints(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            contentAlignment = Alignment.Center,
+        ) {
+            val targetArtWidth = if (isSquareArt) {
+                artSize
+            } else {
+                minOf(maxWidth, maxHeight * targetArtRatio)
+            }
+            val targetArtHeight = targetArtWidth / targetArtRatio
+            val animatedArtWidth by animateDpAsState(
+                targetValue = targetArtWidth,
+                animationSpec = tween(
+                    durationMillis = ART_RATIO_TRANSITION_DURATION_MS,
+                    easing = FastOutSlowInEasing,
+                ),
+                label = "artWidth",
             )
-        } else {
-            Box(
-                modifier = Modifier
-                    .size(artSize)
-                    .aspectRatio(1f)
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.surfaceVariant,
-                                MaterialTheme.colorScheme.surface,
+            val animatedArtHeight by animateDpAsState(
+                targetValue = targetArtHeight,
+                animationSpec = tween(
+                    durationMillis = ART_RATIO_TRANSITION_DURATION_MS,
+                    easing = FastOutSlowInEasing,
+                ),
+                label = "artHeight",
+            )
+
+            if (!snapshot.artUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(snapshot.artUrl)
+                        .memoryCacheKey(snapshot.imageCacheKey)
+                        .diskCacheKey(snapshot.imageCacheKey)
+                        .useExistingImageAsPlaceholder(true)
+                        .crossfade(ART_CROSSFADE_DURATION_MS)
+                        .build(),
+                    contentDescription = snapshot.title,
+                    placeholder = retainedArtPainter.value,
+                    onSuccess = { state ->
+                        val loaded = state.result.image
+                        if (loaded.width > 0 && loaded.height > 0) {
+                            val loadedRatio = loaded.width.toFloat() / loaded.height.toFloat()
+                            if (artworkRatioByCacheKey[snapshot.imageCacheKey] != loadedRatio) {
+                                artworkRatioByCacheKey[snapshot.imageCacheKey] = loadedRatio
+                                lastKnownArtRatio.value = loadedRatio
+                            }
+                        }
+                        retainArtworkPainter(snapshot.imageCacheKey, state.painter)
+                    },
+                    modifier = Modifier.size(
+                        width = animatedArtWidth,
+                        height = animatedArtHeight,
+                    ),
+                    contentScale = if (isSquareArt) ContentScale.Crop else ContentScale.Fit,
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(artSize)
+                        .aspectRatio(1f)
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.surfaceVariant,
+                                    MaterialTheme.colorScheme.surface,
+                                ),
                             ),
                         ),
-                    ),
-            )
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(14.dp))
@@ -685,8 +818,7 @@ private fun NowPlayingControlDock(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 18.dp)
-                    .navigationBarsPadding(),
+                    .padding(horizontal = 20.dp, vertical = 18.dp),
             ) {
             Row(
                 modifier = Modifier.align(Alignment.Center),
