@@ -52,9 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -93,8 +91,6 @@ import kotlin.math.sin
 
 private const val CHANNEL_TRANSITION_DURATION_MS = 320
 private const val SQUARE_ART_ASPECT_TOLERANCE = 0.05f
-private const val ARTWORK_FEATHER_MAX_ALPHA = 0.10f
-private val ARTWORK_FEATHER_EDGE = 24.dp
 private const val CHANNEL_SWIPE_LOCK_MS = 500L
 private const val GRADIENT_TRANSITION_DURATION_MS = 820
 
@@ -585,40 +581,6 @@ fun NowPlayingScreen(
     }
 }
 
-/**
- * Static, subtle inner edge feather for loaded Now Playing artwork. Draws a soft
- * low-opacity fade band along each edge of the image's own rendered bounds so
- * artwork (including fully fitted portrait art) eases into the themed background.
- * Static: fixed geometry and alpha, no animation and no image-data changes.
- */
-private fun Modifier.innerEdgeFeather(): Modifier = drawWithContent {
-    drawContent()
-    val feather = Color.Black.copy(alpha = ARTWORK_FEATHER_MAX_ALPHA)
-    val fromEdge = listOf(feather, Color.Transparent)
-    val toEdge = listOf(Color.Transparent, feather)
-    val edge = ARTWORK_FEATHER_EDGE.toPx()
-    drawRect(
-        brush = Brush.verticalGradient(fromEdge),
-        topLeft = Offset.Zero,
-        size = Size(size.width, edge),
-    )
-    drawRect(
-        brush = Brush.verticalGradient(toEdge),
-        topLeft = Offset(0f, size.height - edge),
-        size = Size(size.width, edge),
-    )
-    drawRect(
-        brush = Brush.horizontalGradient(fromEdge),
-        topLeft = Offset.Zero,
-        size = Size(edge, size.height),
-    )
-    drawRect(
-        brush = Brush.horizontalGradient(toEdge),
-        topLeft = Offset(size.width - edge, 0f),
-        size = Size(edge, size.height),
-    )
-}
-
 @Composable
 private fun NowPlayingHeroCard(
     modifier: Modifier = Modifier,
@@ -664,11 +626,8 @@ private fun NowPlayingHeroCard(
                         Modifier
                             .size(artSize)
                             .aspectRatio(1f)
-                            .innerEdgeFeather()
                     } else {
-                        Modifier
-                            .aspectRatio(artRatio)
-                            .innerEdgeFeather()
+                        Modifier.aspectRatio(artRatio)
                     },
                     contentScale = if (isSquareArt) ContentScale.Crop else ContentScale.Fit,
                 )
