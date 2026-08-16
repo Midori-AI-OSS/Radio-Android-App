@@ -158,6 +158,8 @@ fun TrackCard(
 | Gradient transition | `820ms` |
 | Swipe lock duration | `500ms` |
 | Channel switch fade | `220ms` |
+| Artwork crossfade | `220ms` |
+| Artwork aspect-ratio settle | `220ms` |
 
 ### Animation Rules
 

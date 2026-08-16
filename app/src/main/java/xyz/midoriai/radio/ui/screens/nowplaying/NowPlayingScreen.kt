@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -87,11 +88,14 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
+import xyz.midoriai.radio.radioapi.ArtPayload
 
 private const val CHANNEL_TRANSITION_DURATION_MS = 320
 private const val SQUARE_ART_ASPECT_TOLERANCE = 0.05f
 private const val CHANNEL_SWIPE_LOCK_MS = 500L
 private const val GRADIENT_TRANSITION_DURATION_MS = 820
+private const val ART_CROSSFADE_DURATION_MS = 220
+private const val ART_RATIO_TRANSITION_DURATION_MS = 220
 
 @Composable
 fun NowPlayingScreen(
@@ -112,27 +116,46 @@ fun NowPlayingScreen(
         playbackState is RadioPlaybackState.SwitchingChannel
 
     val normalizedSelectedChannel = normalizeChannelKey(selectedChannel)
-    val artForSelectedChannel = art?.takeIf {
-        it.hasArt && normalizeChannelKey(it.channel) == normalizedSelectedChannel
+    val selectedChannelArt = art?.takeIf {
+        normalizeChannelKey(it.channel) == normalizedSelectedChannel
     }
     val currentTrackForSelectedChannel = currentTrack?.takeIf {
         normalizeChannelKey(it.channel) == normalizedSelectedChannel
     }
 
-    val isArtForCurrentTrack = if (currentTrackForSelectedChannel != null && artForSelectedChannel != null) {
-        artForSelectedChannel.trackId == currentTrackForSelectedChannel.trackId
-    } else {
-        true
+    // Art for the selected channel is kept even when its track ID briefly lags the
+    // current track: the service publishes the current track and its art on separate
+    // polls, so a mismatch is transient, not a reason to blank the artwork.
+    //
+    // While art for the selected channel is pending (the service still reports the
+    // previous channel's art, or none yet), the last displayed art stays visible and
+    // is replaced only once real art arrives. It is cleared when the service confirms
+    // the selected channel has no art, so rapid channel switches never leave stale
+    // art stuck on screen.
+    var stickyArt by remember { mutableStateOf<ArtPayload?>(null) }
+    LaunchedEffect(normalizedSelectedChannel, art) {
+        stickyArt = when {
+            selectedChannelArt != null && selectedChannelArt.hasArt &&
+                selectedChannelArt.artUrl.isNotBlank() -> selectedChannelArt
+
+            selectedChannelArt != null -> null
+            else -> stickyArt
+        }
     }
 
-    val artUrl = if (isArtForCurrentTrack) {
-        artForSelectedChannel?.artUrl
-    } else {
-        null
+    val displayArt = when {
+        selectedChannelArt != null && selectedChannelArt.hasArt &&
+            selectedChannelArt.artUrl.isNotBlank() -> selectedChannelArt
+
+        selectedChannelArt != null -> null
+        else -> stickyArt
     }
-    val trackId = currentTrackForSelectedChannel?.trackId ?: artForSelectedChannel?.trackId ?: "unknown"
+
     val trackTitle = currentTrackForSelectedChannel?.title ?: "Fetching current track..."
-    val imageCacheKey = "${normalizedSelectedChannel}_${trackId}_${artUrl.orEmpty()}"
+    val artUrl = displayArt?.artUrl
+    val imageCacheKey = displayArt?.let {
+        "${normalizeChannelKey(it.channel)}_${it.trackId}_${it.artUrl}"
+    } ?: "${normalizedSelectedChannel}_unknown_"
 
     val liveSnapshot = NowPlayingVisualState(
         channel = normalizedSelectedChannel,
@@ -588,46 +611,72 @@ private fun NowPlayingHeroCard(
     titleStyle: TextStyle,
 ) {
     // Non-square channel artwork (e.g. 768x1344 portrait) is fully fitted at its
-    // intrinsic aspect ratio; square or unknown artwork keeps the legacy crop.
-    var loadedArtRatio by remember(snapshot.imageCacheKey) { mutableStateOf<Float?>(null) }
-    val artRatio = loadedArtRatio ?: 1f
-    val isSquareArt = abs(artRatio - 1f) <= SQUARE_ART_ASPECT_TOLERANCE
+    // intrinsic aspect ratio; square or unknown artwork keeps the legacy crop. The
+    // ratio is remembered across snapshots so pending or crossfading art never
+    // resets the bounds; the 1:1 bounds settle to the intrinsic ratio over 220ms
+    // once a new artwork loads instead of snapping.
+    var loadedArtRatio by remember { mutableStateOf<Float?>(null) }
+    val targetArtRatio = loadedArtRatio ?: 1f
+    val isSquareArt = abs(targetArtRatio - 1f) <= SQUARE_ART_ASPECT_TOLERANCE
 
     Column(
         modifier = modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
             contentAlignment = Alignment.Center,
         ) {
+            val targetArtWidth = if (isSquareArt) {
+                artSize
+            } else {
+                minOf(maxWidth, maxHeight * targetArtRatio)
+            }
+            val targetArtHeight = targetArtWidth / targetArtRatio
+            val animatedArtWidth by animateDpAsState(
+                targetValue = targetArtWidth,
+                animationSpec = tween(
+                    durationMillis = ART_RATIO_TRANSITION_DURATION_MS,
+                    easing = FastOutSlowInEasing,
+                ),
+                label = "artWidth",
+            )
+            val animatedArtHeight by animateDpAsState(
+                targetValue = targetArtHeight,
+                animationSpec = tween(
+                    durationMillis = ART_RATIO_TRANSITION_DURATION_MS,
+                    easing = FastOutSlowInEasing,
+                ),
+                label = "artHeight",
+            )
+
             if (!snapshot.artUrl.isNullOrBlank()) {
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(snapshot.artUrl)
                         .memoryCacheKey(snapshot.imageCacheKey)
                         .diskCacheKey(snapshot.imageCacheKey)
-                        .crossfade(false)
+                        .crossfade(
+                            durationMillis = ART_CROSSFADE_DURATION_MS,
+                            easing = FastOutSlowInEasing,
+                        )
                         .build(),
                     contentDescription = snapshot.title,
                     onSuccess = { state ->
-                        val loadedSize = state.painter.intrinsicSize
-                        if (loadedSize.width > 0f && loadedSize.height > 0f) {
-                            val loadedRatio = loadedSize.width / loadedSize.height
+                        val loaded = state.result.image
+                        if (loaded.width > 0 && loaded.height > 0) {
+                            val loadedRatio = loaded.width.toFloat() / loaded.height.toFloat()
                             if (loadedRatio != loadedArtRatio) {
                                 loadedArtRatio = loadedRatio
                             }
                         }
                     },
-                    modifier = if (isSquareArt) {
-                        Modifier
-                            .size(artSize)
-                            .aspectRatio(1f)
-                    } else {
-                        Modifier.aspectRatio(artRatio)
-                    },
+                    modifier = Modifier.size(
+                        width = animatedArtWidth,
+                        height = animatedArtHeight,
+                    ),
                     contentScale = if (isSquareArt) ContentScale.Crop else ContentScale.Fit,
                 )
             } else {
