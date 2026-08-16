@@ -38,15 +38,18 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -69,7 +72,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.palette.graphics.Palette
+import coil3.annotation.ExperimentalCoilApi
 import coil3.compose.AsyncImage
+import coil3.compose.useExistingImageAsPlaceholder
 import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
@@ -168,6 +173,15 @@ fun NowPlayingScreen(
     var renderedSnapshot by remember { mutableStateOf<NowPlayingVisualState?>(null) }
     var activeTransition by remember { mutableStateOf<HeroTransitionState?>(null) }
     val heroSlideProgress = remember { Animatable(1f) }
+
+    // Intrinsic artwork ratios are hoisted above the hero card and keyed by the
+    // displayed image's cache key so the channel-slide cards and the steady-state
+    // card share each artwork's ratio and never resize a second time. The last
+    // known ratio keeps bounds stable while a new artwork is still loading; a
+    // truly new artwork settles to its intrinsic ratio once, over
+    // ART_RATIO_TRANSITION_DURATION_MS, when its ratio first becomes known.
+    val artworkRatioByCacheKey = remember { mutableStateMapOf<String, Float?>() }
+    val lastKnownArtRatio = remember { mutableStateOf<Float?>(null) }
 
     val liveSnapshotState by rememberUpdatedState(liveSnapshot)
     val context = LocalContext.current
@@ -553,6 +567,8 @@ fun NowPlayingScreen(
                                 snapshot = transition.from,
                                 artSize = artSize,
                                 titleStyle = titleStyle,
+                                artworkRatioByCacheKey = artworkRatioByCacheKey,
+                                lastKnownArtRatio = lastKnownArtRatio,
                                 modifier = Modifier.graphicsLayer {
                                     translationX = outgoingOffset
                                     alpha = 1f - (0.10f * progress)
@@ -563,6 +579,8 @@ fun NowPlayingScreen(
                                 snapshot = transition.to,
                                 artSize = artSize,
                                 titleStyle = titleStyle,
+                                artworkRatioByCacheKey = artworkRatioByCacheKey,
+                                lastKnownArtRatio = lastKnownArtRatio,
                                 modifier = Modifier.graphicsLayer {
                                     translationX = incomingOffset
                                     alpha = 0.70f + (0.30f * progress)
@@ -573,6 +591,8 @@ fun NowPlayingScreen(
                                 snapshot = visibleSnapshot,
                                 artSize = artSize,
                                 titleStyle = titleStyle,
+                                artworkRatioByCacheKey = artworkRatioByCacheKey,
+                                lastKnownArtRatio = lastKnownArtRatio,
                             )
                         }
                     }
@@ -603,19 +623,25 @@ fun NowPlayingScreen(
     }
 }
 
+@OptIn(ExperimentalCoilApi::class)
 @Composable
 private fun NowPlayingHeroCard(
     modifier: Modifier = Modifier,
     snapshot: NowPlayingVisualState,
     artSize: Dp,
     titleStyle: TextStyle,
+    artworkRatioByCacheKey: SnapshotStateMap<String, Float?>,
+    lastKnownArtRatio: MutableState<Float?>,
 ) {
     // Non-square channel artwork (e.g. 768x1344 portrait) is fully fitted at its
     // intrinsic aspect ratio; square or unknown artwork keeps the legacy crop. The
-    // ratio is remembered across snapshots so pending or crossfading art never
-    // resets the bounds; the 1:1 bounds settle to the intrinsic ratio over 220ms
-    // once a new artwork loads instead of snapping.
-    var loadedArtRatio by remember { mutableStateOf<Float?>(null) }
+    // ratio is hoisted above this card and keyed by image cache key, so pending or
+    // crossfading art never resets the bounds and the transition and steady-state
+    // card instances share the same ratio. The 1:1 bounds settle to the intrinsic
+    // ratio over 220ms once a new artwork loads, and only once, instead of
+    // snapping or animating a second time when the channel slide ends.
+    val loadedArtRatio =
+        artworkRatioByCacheKey[snapshot.imageCacheKey] ?: lastKnownArtRatio.value
     val targetArtRatio = loadedArtRatio ?: 1f
     val isSquareArt = abs(targetArtRatio - 1f) <= SQUARE_ART_ASPECT_TOLERANCE
 
@@ -658,6 +684,7 @@ private fun NowPlayingHeroCard(
                         .data(snapshot.artUrl)
                         .memoryCacheKey(snapshot.imageCacheKey)
                         .diskCacheKey(snapshot.imageCacheKey)
+                        .useExistingImageAsPlaceholder(true)
                         .crossfade(ART_CROSSFADE_DURATION_MS)
                         .build(),
                     contentDescription = snapshot.title,
@@ -665,8 +692,9 @@ private fun NowPlayingHeroCard(
                         val loaded = state.result.image
                         if (loaded.width > 0 && loaded.height > 0) {
                             val loadedRatio = loaded.width.toFloat() / loaded.height.toFloat()
-                            if (loadedRatio != loadedArtRatio) {
-                                loadedArtRatio = loadedRatio
+                            if (artworkRatioByCacheKey[snapshot.imageCacheKey] != loadedRatio) {
+                                artworkRatioByCacheKey[snapshot.imageCacheKey] = loadedRatio
+                                lastKnownArtRatio.value = loadedRatio
                             }
                         }
                     },

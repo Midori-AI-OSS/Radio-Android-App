@@ -1,6 +1,6 @@
 # [TASK] Smooth Now Playing artwork transitions for song and channel changes
 
-- Status: implemented, verification blocked-by-environment
+- Status: implemented, verified (host SDK available)
 - Source: approved Now Playing transition plan
 - Owner: coder
 
@@ -18,11 +18,18 @@
   cannot strand stale art: art for a deselected channel is ignored, and a confirmed
   artless payload clears the sticky art.
 - New art crossfades in over 220ms (Coil `crossfade`, `FastOutSlowInEasing`).
+- Coil 3.5.0 `useExistingImageAsPlaceholder(true)` keeps the actual old painter as
+  the placeholder, so the old artwork stays visible through the 220ms crossfade
+  instead of fading from a blank placeholder.
 - The initial 1:1 artwork bounds settle to the intrinsic ratio (e.g. 4:7) over 220ms
   via animated width/height instead of snapping. Final behavior preserved: 1:1 art
   crops at `artSize`, non-square art fully fits at its intrinsic ratio.
-- The loaded ratio is remembered across snapshots so pending/crossfading art never
-  resets the bounds.
+- The intrinsic ratio is hoisted above `NowPlayingHeroCard`, keyed by displayed
+  image cache key, and shared by the channel-slide (from/to) and steady-state card
+  instances: a truly new artwork resizes exactly once when its ratio first becomes
+  known, and the steady-state card reuses the slide card's ratio instead of
+  animating a second time. The last known ratio keeps bounds stable while a new
+  artwork is still loading.
 
 Unchanged on purpose: Android Auto/session presentation, browse coverage, polling,
 service/API behavior, dock, placeholders, and dependencies.
@@ -30,13 +37,6 @@ service/API behavior, dock, placeholders, and dependencies.
 
 ## Verification
 
-- `./gradlew test` — BLOCKED: no Android SDK on this host (`SDK location not found`,
-  no `local.properties`, `ANDROID_HOME` unset).
-- `./gradlew :app:assembleDebug` — not run; same SDK blocker.
-- Docker/PixelArch container — unavailable (permission denied on `/var/run/docker.sock`).
-- Static checks passed: brace/paren balance on the edited file; no leftover references
-  to the removed identifiers; no service/API/Android Auto files touched; no test scans
-  `NowPlayingScreen.kt`.
-
-Run `./gradlew test` and `./gradlew :app:assembleDebug` in the PixelArch container (or a
-host with an Android SDK) before closing this out.
+- `./gradlew test` — PASSED (SDK available via `local.properties` at
+  `/tmp/agents-artifacts/android-sdk`).
+- `./gradlew :app:assembleDebug` — PASSED.
