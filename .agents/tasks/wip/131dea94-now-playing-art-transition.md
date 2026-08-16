@@ -30,6 +30,16 @@
   known, and the steady-state card reuses the slide card's ratio instead of
   animating a second time. The last known ratio keeps bounds stable while a new
   artwork is still loading.
+- `useExistingImageAsPlaceholder(true)` only helps the steady-state card's own
+  painter, not the fresh AsyncImage instances used by the channel-slide cards. The
+  painter for the last successfully loaded artwork is now retained above the hero
+  card and passed as the `placeholder` to every hero-card instance, so fresh
+  slide cards paint the previous art instantly and Coil's 220ms crossfade fades to
+  the new art. Only successes whose cache key matches the currently displayed art
+  update the retained painter, and a confirmed artless payload clears it, so stale
+  art cannot persist after a no-art state. Bounds/ratio/crop/fit logic is untouched
+  (no new modifiers), so resize-once and 1:1 crop / non-square full-fit behavior
+  are unchanged.
 
 Unchanged on purpose: Android Auto/session presentation, browse coverage, polling,
 service/API behavior, dock, placeholders, and dependencies.
@@ -40,3 +50,6 @@ service/API behavior, dock, placeholders, and dependencies.
 - `./gradlew test` — PASSED (SDK available via `local.properties` at
   `/tmp/agents-artifacts/android-sdk`).
 - `./gradlew :app:assembleDebug` — PASSED.
+- Channel-slide painter retention — `./gradlew test` PASSED,
+  `./gradlew :app:assembleDebug` PASSED after the retained-painter change
+  (host SDK; Docker unavailable on this host).

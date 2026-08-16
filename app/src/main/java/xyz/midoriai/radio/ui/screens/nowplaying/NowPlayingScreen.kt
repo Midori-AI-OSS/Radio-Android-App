@@ -60,6 +60,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -138,6 +139,11 @@ fun NowPlayingScreen(
     // the selected channel has no art, so rapid channel switches never leave stale
     // art stuck on screen.
     var stickyArt by remember { mutableStateOf<ArtPayload?>(null) }
+    // The painter for the last successfully loaded artwork is retained here so
+    // fresh slide-card AsyncImages can show the previous art instantly and then
+    // crossfade to the new art. It is updated only for the currently displayed
+    // artwork and cleared on a confirmed artless payload.
+    val retainedArtPainter = remember { mutableStateOf<Painter?>(null) }
     LaunchedEffect(normalizedSelectedChannel, art) {
         stickyArt = when {
             selectedChannelArt != null && selectedChannelArt.hasArt &&
@@ -145,6 +151,12 @@ fun NowPlayingScreen(
 
             selectedChannelArt != null -> null
             else -> stickyArt
+        }
+
+        // A confirmed artless payload also drops the retained artwork painter so
+        // the next artwork never crossfades from stale art.
+        if (selectedChannelArt != null && stickyArt == null) {
+            retainedArtPainter.value = null
         }
     }
 
@@ -182,6 +194,16 @@ fun NowPlayingScreen(
     // ART_RATIO_TRANSITION_DURATION_MS, when its ratio first becomes known.
     val artworkRatioByCacheKey = remember { mutableStateMapOf<String, Float?>() }
     val lastKnownArtRatio = remember { mutableStateOf<Float?>(null) }
+
+    // Only successes for the artwork currently on display update the retained
+    // painter; the current key is read through rememberUpdatedState so the guard
+    // is always fresh even for in-flight loads.
+    val currentImageCacheKey by rememberUpdatedState(imageCacheKey)
+    val retainArtworkPainter: (String, Painter) -> Unit = { loadedCacheKey, painter ->
+        if (loadedCacheKey == currentImageCacheKey) {
+            retainedArtPainter.value = painter
+        }
+    }
 
     val liveSnapshotState by rememberUpdatedState(liveSnapshot)
     val context = LocalContext.current
@@ -569,6 +591,8 @@ fun NowPlayingScreen(
                                 titleStyle = titleStyle,
                                 artworkRatioByCacheKey = artworkRatioByCacheKey,
                                 lastKnownArtRatio = lastKnownArtRatio,
+                                retainedArtPainter = retainedArtPainter,
+                                retainArtworkPainter = retainArtworkPainter,
                                 modifier = Modifier.graphicsLayer {
                                     translationX = outgoingOffset
                                     alpha = 1f - (0.10f * progress)
@@ -581,6 +605,8 @@ fun NowPlayingScreen(
                                 titleStyle = titleStyle,
                                 artworkRatioByCacheKey = artworkRatioByCacheKey,
                                 lastKnownArtRatio = lastKnownArtRatio,
+                                retainedArtPainter = retainedArtPainter,
+                                retainArtworkPainter = retainArtworkPainter,
                                 modifier = Modifier.graphicsLayer {
                                     translationX = incomingOffset
                                     alpha = 0.70f + (0.30f * progress)
@@ -593,6 +619,8 @@ fun NowPlayingScreen(
                                 titleStyle = titleStyle,
                                 artworkRatioByCacheKey = artworkRatioByCacheKey,
                                 lastKnownArtRatio = lastKnownArtRatio,
+                                retainedArtPainter = retainedArtPainter,
+                                retainArtworkPainter = retainArtworkPainter,
                             )
                         }
                     }
@@ -632,6 +660,8 @@ private fun NowPlayingHeroCard(
     titleStyle: TextStyle,
     artworkRatioByCacheKey: SnapshotStateMap<String, Float?>,
     lastKnownArtRatio: MutableState<Float?>,
+    retainedArtPainter: MutableState<Painter?>,
+    retainArtworkPainter: (String, Painter) -> Unit,
 ) {
     // Non-square channel artwork (e.g. 768x1344 portrait) is fully fitted at its
     // intrinsic aspect ratio; square or unknown artwork keeps the legacy crop. The
@@ -688,6 +718,7 @@ private fun NowPlayingHeroCard(
                         .crossfade(ART_CROSSFADE_DURATION_MS)
                         .build(),
                     contentDescription = snapshot.title,
+                    placeholder = retainedArtPainter.value,
                     onSuccess = { state ->
                         val loaded = state.result.image
                         if (loaded.width > 0 && loaded.height > 0) {
@@ -697,6 +728,7 @@ private fun NowPlayingHeroCard(
                                 lastKnownArtRatio.value = loadedRatio
                             }
                         }
+                        retainArtworkPainter(snapshot.imageCacheKey, state.painter)
                     },
                     modifier = Modifier.size(
                         width = animatedArtWidth,
