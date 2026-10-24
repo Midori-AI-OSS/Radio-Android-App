@@ -1,10 +1,15 @@
 package xyz.midoriai.radio.playback
 
+import androidx.media3.common.Player
+import java.lang.reflect.Method
+import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import xyz.midoriai.radio.ui.screens.nowplaying.RadioPlaybackState
 
 class FreshStreamOpenCoordinatorTest {
     @Test
@@ -161,11 +166,13 @@ class FreshStreamOpenCoordinatorTest {
     fun selectionSupersession_invalidatesRetryAndRestoresVolume() {
         val coordinator = FreshStreamOpenCoordinator()
         val queuedRetry = coordinator.currentGeneration()
-        var volume = 0f
+        val volume = PlayerVolume(0f)
+        val player = volumePlayer(volume)
+        val effects = playerEffects(player)
 
-        coordinator.supersedeForSelection { volume = 1f }
+        coordinator.supersedeForSelection(effects::restoreNormalVolume)
 
-        assertEquals(1f, volume)
+        assertEquals(1f, player.volume)
         assertFalse(
             coordinator.canRunDelayedOpen(
                 queuedGeneration = queuedRetry,
@@ -178,18 +185,74 @@ class FreshStreamOpenCoordinatorTest {
     @Test
     fun switchCompletion_restoresVolumeOnCancellationButNotAfterSupersession() {
         val coordinator = FreshStreamOpenCoordinator()
-        var volume = 0f
+        val volume = PlayerVolume(0f)
+        val player = volumePlayer(volume)
+        val effects = playerEffects(player)
         val cancelledSwitch = coordinator.beginChannelSwitch()
 
-        coordinator.finishChannelSwitch(cancelledSwitch) { volume = 1f }
-        assertEquals(1f, volume)
+        effects.finishChannelSwitch(
+            coordinator = coordinator,
+            switchGeneration = cancelledSwitch,
+            openResult = null,
+            playbackDesired = true,
+        )
+        assertEquals(1f, player.volume)
 
-        volume = 0f
+        player.volume = 0f
         val supersededSwitch = coordinator.beginChannelSwitch()
-        coordinator.supersedeForSelection { volume = 1f }
-        coordinator.finishChannelSwitch(supersededSwitch) { volume = 0.5f }
+        coordinator.supersedeForSelection(effects::restoreNormalVolume)
+        effects.finishChannelSwitch(
+            coordinator = coordinator,
+            switchGeneration = supersededSwitch,
+            openResult = null,
+            playbackDesired = true,
+        )
 
-        assertEquals(1f, volume)
+        assertEquals(1f, player.volume)
+    }
+
+    @Test
+    fun rejectedSwitchOpen_restoresPlayerVolumeAndConnectingState() {
+        val coordinator = FreshStreamOpenCoordinator()
+        val volume = PlayerVolume(0f)
+        val player = volumePlayer(volume)
+        var state: RadioPlaybackState = RadioPlaybackState.SwitchingChannel("Focus")
+        val effects = playerEffects(player) { state = it }
+
+        coordinator.runOpenTransaction {
+            val switchGeneration = coordinator.beginChannelSwitch()
+            val rejectedResult = coordinator.runOpenTransaction { error("must not run") }
+
+            effects.finishChannelSwitch(
+                coordinator = coordinator,
+                switchGeneration = switchGeneration,
+                openResult = rejectedResult,
+                playbackDesired = true,
+            )
+        }
+
+        assertEquals(1f, player.volume)
+        assertEquals(RadioPlaybackState.Connecting, state)
+    }
+
+    @Test
+    fun failedOpenTransaction_restoresActualPlayerVolumeAndReleasesAdmission() {
+        val coordinator = FreshStreamOpenCoordinator()
+        val volume = PlayerVolume(0f)
+        val player = volumePlayer(volume)
+        val effects = playerEffects(player)
+
+        assertThrows(IllegalStateException::class.java) {
+            coordinator.runOpenTransaction(
+                onFinished = effects::restoreNormalVolume,
+            ) {
+                player.volume = 0.2f
+                error("open failed")
+            }
+        }
+
+        assertEquals(1f, player.volume)
+        assertEquals(2L, coordinator.tryBeginOpen())
     }
 
     @Test
@@ -208,5 +271,52 @@ class FreshStreamOpenCoordinatorTest {
                 playbackDesired = true,
             ),
         )
+    }
+
+    private data class PlayerVolume(var value: Float)
+
+    private fun playerEffects(
+        player: Player,
+        updatePlaybackState: (RadioPlaybackState) -> Unit = {},
+    ): FreshStreamPlayerEffects {
+        return FreshStreamPlayerEffects(
+            player = player,
+            normalVolume = 1f,
+            updatePlaybackState = updatePlaybackState,
+        )
+    }
+
+    private fun volumePlayer(volume: PlayerVolume): Player {
+        return Proxy.newProxyInstance(
+            Player::class.java.classLoader,
+            arrayOf(Player::class.java),
+        ) { proxy, method, args ->
+            when (method.name) {
+                "getVolume" -> volume.value
+                "setVolume" -> {
+                    volume.value = args?.firstOrNull() as Float
+                    null
+                }
+                "hashCode" -> System.identityHashCode(proxy)
+                "equals" -> proxy === args?.firstOrNull()
+                "toString" -> "VolumePlayer"
+                else -> defaultValue(method)
+            }
+        } as Player
+    }
+
+    private fun defaultValue(method: Method): Any? {
+        return when (method.returnType) {
+            java.lang.Boolean.TYPE -> false
+            java.lang.Integer.TYPE -> 0
+            java.lang.Long.TYPE -> 0L
+            java.lang.Float.TYPE -> 0f
+            java.lang.Double.TYPE -> 0.0
+            java.lang.Byte.TYPE -> 0.toByte()
+            java.lang.Short.TYPE -> 0.toShort()
+            java.lang.Character.TYPE -> '\u0000'
+            java.lang.Void.TYPE -> null
+            else -> null
+        }
     }
 }

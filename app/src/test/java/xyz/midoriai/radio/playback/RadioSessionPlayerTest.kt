@@ -67,7 +67,7 @@ class RadioSessionPlayerTest {
         sessionPlayer.seekToNext()
         sessionPlayer.seekToPrevious()
         sessionPlayer.setMediaItems(
-            listOf(MediaItem.fromUri("https://example.test/stream")),
+            listOf(MediaItem.Builder().setMediaId("all").build()),
             0,
             C.TIME_UNSET,
         )
@@ -109,13 +109,58 @@ class RadioSessionPlayerTest {
         )
 
         sessionPlayer.setMediaItems(
-            listOf(MediaItem.fromUri("https://example.test/focus")),
+            listOf(MediaItem.Builder().setMediaId("focus").build()),
             0,
             C.TIME_UNSET,
         )
         sessionPlayer.prepare()
 
         assertEquals(1, canonicalOpenCalls)
+        assertEquals(0, delegatedSetCalls)
+        assertEquals(0, delegatedPrepareCalls)
+    }
+
+    @Test
+    fun mediaSessionSelection_returnedItemsInstallOnceThroughCanonicalServiceOpen() {
+        val events = mutableListOf<String>()
+        var delegatedSetCalls = 0
+        var delegatedPrepareCalls = 0
+        var selectedChannel = "all"
+        val streamOpening = MediaSessionStreamOpening(
+            resolveRequestedChannel = { items -> items.first().mediaId },
+            effectiveQualityForNextOpen = { "high" },
+            buildPlaybackItems = { channel, quality ->
+                events += "build:$channel:$quality"
+                listOf(MediaItem.Builder().setMediaId(channel).build())
+            },
+            selectChannelImmediately = { channel ->
+                selectedChannel = channel
+                events += "select:$channel"
+            },
+            openSelectedStream = { events += "open:$selectedChannel" },
+        )
+        val sessionPlayer = streamOpening.wrapPlayer(
+            player = fakePlayer(
+                currentMediaItem = null,
+                onSetMediaItems = { delegatedSetCalls += 1 },
+                onPrepare = { delegatedPrepareCalls += 1 },
+            ),
+            onPlay = {},
+            onPause = {},
+            onSelectAdjacentChannel = {},
+        )
+
+        val returnedItems = streamOpening.resolvePlaybackItems(
+            listOf(MediaItem.Builder().setMediaId(" Focus ").build()),
+        )
+        sessionPlayer.setMediaItems(returnedItems, 0, C.TIME_UNSET)
+        sessionPlayer.prepare()
+
+        assertEquals(listOf("focus"), returnedItems.map(MediaItem::mediaId))
+        assertEquals(
+            listOf("build:focus:high", "select:focus", "open:focus"),
+            events,
+        )
         assertEquals(0, delegatedSetCalls)
         assertEquals(0, delegatedPrepareCalls)
     }

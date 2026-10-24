@@ -38,10 +38,16 @@ internal class FreshStreamOpenCoordinator {
 
     fun finishChannelSwitch(
         queuedGeneration: Long,
+        openResult: FreshStreamOpenResult?,
+        playbackDesired: Boolean,
         restoreVolume: () -> Unit,
+        onRejectedOpen: () -> Unit,
     ) {
         if (isCurrentChannelSwitch(queuedGeneration)) {
             restoreVolume()
+            if (openResult == FreshStreamOpenResult.Rejected && playbackDesired) {
+                onRejectedOpen()
+            }
         }
     }
 
@@ -58,13 +64,20 @@ internal class FreshStreamOpenCoordinator {
         opening = false
     }
 
-    fun runOpenTransaction(transaction: (openGeneration: Long) -> Unit): FreshStreamOpenResult {
+    fun runOpenTransaction(
+        onFinished: () -> Unit = {},
+        transaction: (openGeneration: Long) -> Unit,
+    ): FreshStreamOpenResult {
         val openGeneration = tryBeginOpen() ?: return FreshStreamOpenResult.Rejected
 
         try {
             transaction(openGeneration)
         } finally {
-            finishOpen()
+            try {
+                onFinished()
+            } finally {
+                finishOpen()
+            }
         }
 
         return FreshStreamOpenResult.Opened

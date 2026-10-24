@@ -1,6 +1,6 @@
 # [TASK] Centralize foreground stream opening and selection
 
-- Status: wip
+- Status: done
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
@@ -26,7 +26,7 @@ Make one service path responsible for admitting each foreground stream open/reop
 - [x] A stale callback/retry, or rapid channel/quality changes, cannot open an older selection over the current one; selection and effective quality are resolved at open admission using existing active/pending-quality semantics.
 - [x] At most one source-replacement/prepare transaction is admitted at a time. A newer explicit selection supersedes older pending work, and opening/retry work cannot race the channel fade into duplicate connections, incorrect selection, or incorrect volume restoration.
 - [x] Behavior-focused tests demonstrate single-flight admission, latest effective channel/quality winning after rapid changes, stale callback/retry rejection, retry/fade overlap, and pause/stop invalidation of delayed opening work.
-- [ ] `./gradlew test` and `./gradlew :app:assembleDebug` pass (blocked: Android SDK location is not configured in this checkout).
+- [x] `./gradlew test` and `./gradlew :app:assembleDebug` pass.
 
 ## Audit findings (2026-10-24)
 
@@ -66,3 +66,12 @@ Make one service path responsible for admitting each foreground stream open/reop
 ## Re-audit (2026-10-24)
 
 - Remains WIP: a rejected switch open returns before resetting `_playbackState`, so it can remain `SwitchingChannel`; tests cover coordinator/forwarding behavior but not service-level MediaSession installation or actual player-volume restoration. Add service-level coverage and ensure rejected switches leave a consistent playback state. Both Gradle checks remain blocked by the missing Android SDK.
+
+## Re-audit closure (2026-10-24)
+
+- Current rejected switch opens now restore normal player volume and replace `SwitchingChannel` with `Connecting` while playback is still desired; stale switch completions cannot overwrite newer state.
+- A service-owned MediaSession opening collaborator now joins callback selection/result construction to the wrapped player's canonical installation callback. Behavioral coverage verifies one canonical open and no delegated source replacement or prepare.
+- Player-effect tests use a `Player` fake to verify real volume writes for failed opens, switch cancellation, and selection supersession, along with the rejected-switch playback-state transition.
+- `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew test --console=plain`: passed. The SDK remains unconfigured in the ambient checkout environment, so the explicit SDK variables are required.
+- `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew :app:assembleDebug --console=plain`: passed.
+- Docker verification remains blocked because this user cannot access `/var/run/docker.sock`.
