@@ -114,7 +114,6 @@ internal class FreshStreamPlayerInstaller(
     fun install(
         replaceSource: () -> Unit,
         playWhenReady: Boolean,
-        onSucceeded: () -> Unit,
         onFailed: () -> Unit,
     ) {
         val snapshot = Snapshot(
@@ -127,7 +126,6 @@ internal class FreshStreamPlayerInstaller(
             replaceSource()
             player.prepare()
             player.playWhenReady = playWhenReady
-            onSucceeded()
         } catch (failure: Throwable) {
             runCatching { restore(snapshot) }
                 .exceptionOrNull()
@@ -157,6 +155,16 @@ internal class FreshStreamPlayerInstaller(
         val playWhenReady: Boolean,
         val wasPrepared: Boolean,
     )
+}
+
+internal fun completeFreshStreamOpen(
+    result: FreshStreamOpenResult,
+    onOpened: () -> Unit,
+): FreshStreamOpenResult {
+    if (result == FreshStreamOpenResult.Opened) {
+        onOpened()
+    }
+    return result
 }
 
 internal fun runFreshStreamOpenTransaction(

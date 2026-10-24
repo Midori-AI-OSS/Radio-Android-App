@@ -3,7 +3,6 @@ package xyz.midoriai.radio.playback
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.ApplicationInfo
-import android.os.Bundle
 import android.util.Log
 import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes
@@ -19,10 +18,7 @@ import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.LibraryParams
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSession.ConnectionResult
 import androidx.media3.session.MediaSession.ControllerInfo
-import androidx.media3.session.SessionCommand
-import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -435,7 +431,7 @@ class RadioPlaybackService : MediaLibraryService() {
         channelForOpen: String? = null,
         onOpenSucceeded: () -> Unit = {},
     ): FreshStreamOpenResult {
-        return try {
+        val result = try {
             runFreshStreamOpenTransaction(
                 coordinator = freshStreamOpenCoordinator,
                 cancelPendingReconnect = ::cancelPendingReconnectJob,
@@ -479,7 +475,6 @@ class RadioPlaybackService : MediaLibraryService() {
                         }
                     },
                     playWhenReady = playWhenReadyAfterOpen,
-                    onSucceeded = onOpenSucceeded,
                     onFailed = {
                         _activeQuality.value = previousActiveQuality
                         _pendingQuality.value = previousPendingQuality
@@ -498,6 +493,7 @@ class RadioPlaybackService : MediaLibraryService() {
         } catch (_: RuntimeException) {
             FreshStreamOpenResult.Failed
         }
+        return completeFreshStreamOpen(result, onOpenSucceeded)
     }
 
     private fun cancelPendingReconnectJob() {
@@ -767,7 +763,8 @@ class RadioPlaybackService : MediaLibraryService() {
     }
 
     private fun syncCurrentMediaItemMetadata() {
-        val currentChannel = player.currentMediaItem?.mediaId?.takeIf { it.isNotBlank() }
+        val currentItem = player.currentMediaItem ?: return
+        val currentChannel = currentItem.mediaId.takeIf { it.isNotBlank() }
             ?: normalizePersistedChannel(_selectedChannel.value)
         val currentIndex = player.currentMediaItemIndex.takeIf { it >= 0 }
             ?: 0.takeIf { player.mediaItemCount == 1 }
@@ -781,10 +778,9 @@ class RadioPlaybackService : MediaLibraryService() {
             return
         }
 
-        val updatedItem = buildMediaItem(
-            channel = currentChannel,
-            quality = lastPlaylistQuality,
-        )
+        val updatedItem = currentItem.buildUpon()
+            .setMediaMetadata(buildMediaMetadata(currentChannel))
+            .build()
         player.replaceMediaItem(currentIndex, updatedItem)
         lastPublishedMetadataFingerprint = fingerprint
     }
@@ -1157,46 +1153,14 @@ class RadioPlaybackService : MediaLibraryService() {
         )
     }
 
-    private inner class SessionCallback : MediaLibrarySession.Callback {
-        override fun onConnect(
-            session: MediaSession,
-            controller: ControllerInfo,
-        ): ConnectionResult {
-            val sessionCommands = ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
-                .add(SELECT_ADJACENT_CHANNEL_SESSION_COMMAND)
-                .add(SET_QUALITY_SESSION_COMMAND)
-                .build()
-
-            return ConnectionResult.AcceptedResultBuilder(session, controller)
-                .setAvailableSessionCommands(sessionCommands)
-                .setAvailablePlayerCommands(RADIO_SESSION_PLAYER_COMMANDS)
-                .setSessionExtras(RadioSessionSnapshotCodec.toBundle(lastPublishedSnapshot ?: snapshotForConnection()))
-                .build()
-        }
-
-        override fun onCustomCommand(
-            session: MediaSession,
-            controller: ControllerInfo,
-            customCommand: SessionCommand,
-            args: Bundle,
-        ): ListenableFuture<SessionResult> {
-            parseAdjacentChannelSessionCommandRequest(
-                customAction = customCommand.customAction,
-                direction = args.getInt(ARG_DIRECTION),
-            )?.let { request ->
-                selectAdjacentChannel(request.direction)
-                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
-            }
-
-            return when (customCommand.customAction) {
-                CUSTOM_COMMAND_SET_QUALITY -> {
-                    setQuality(args.getString(ARG_QUALITY).orEmpty())
-                    Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
-                }
-
-                else -> Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
-            }
-        }
+    private inner class SessionCallback : RadioMediaSessionCallback(
+        sessionExtras = {
+            RadioSessionSnapshotCodec.toBundle(lastPublishedSnapshot ?: snapshotForConnection())
+        },
+        resolvePlaybackItems = mediaSessionStreamOpening::resolvePlaybackItems,
+        selectAdjacentChannel = this@RadioPlaybackService::selectAdjacentChannel,
+        setQuality = this@RadioPlaybackService::setQuality,
+    ), MediaLibrarySession.Callback {
 
         override fun onGetLibraryRoot(
             session: MediaLibrarySession,
@@ -1273,23 +1237,6 @@ class RadioPlaybackService : MediaLibraryService() {
             )
         }
 
-        override fun onSetMediaItems(
-            mediaSession: MediaSession,
-            controller: ControllerInfo,
-            mediaItems: List<MediaItem>,
-            startIndex: Int,
-            startPositionMs: Long,
-        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
-            val playbackItems = mediaSessionStreamOpening.resolvePlaybackItems(mediaItems)
-
-            return Futures.immediateFuture(
-                MediaSession.MediaItemsWithStartPosition(
-                    playbackItems,
-                    0,
-                    C.TIME_UNSET,
-                ),
-            )
-        }
     }
 
     private inner class PlayerEventListener : Player.Listener {

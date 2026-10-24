@@ -325,7 +325,6 @@ class FreshStreamOpenCoordinatorTest {
                     player.setMediaItem(MediaItem.Builder().setMediaId("focus").build())
                 },
                 playWhenReady = true,
-                onSucceeded = { selectedChannel = "focus" },
                 onFailed = { playbackState = RadioPlaybackState.Playing },
             )
         }
@@ -356,7 +355,6 @@ class FreshStreamOpenCoordinatorTest {
                     player.setMediaItem(MediaItem.Builder().setMediaId("focus").build())
                 },
                 playWhenReady = true,
-                onSucceeded = { selectedChannel = "focus" },
                 onFailed = { playbackState = RadioPlaybackState.Playing },
             )
         }
@@ -366,6 +364,37 @@ class FreshStreamOpenCoordinatorTest {
         assertEquals("all", state.mediaItem?.mediaId)
         assertTrue(state.playWhenReady)
         assertEquals(2, state.prepareCalls)
+    }
+
+    @Test
+    fun metadataRefreshFailureAfterOpen_doesNotRollBackInstalledSourceOrSelection() {
+        val state = InstallationPlayerState(
+            mediaItem = MediaItem.Builder().setMediaId("all").build(),
+            playWhenReady = true,
+            playbackState = Player.STATE_READY,
+        )
+        val player = installationPlayer(state)
+        var selectedChannel = "all"
+
+        FreshStreamPlayerInstaller(player).install(
+            replaceSource = {
+                player.setMediaItem(MediaItem.Builder().setMediaId("focus").build())
+            },
+            playWhenReady = true,
+            onFailed = {},
+        )
+
+        assertThrows(IllegalStateException::class.java) {
+            completeFreshStreamOpen(FreshStreamOpenResult.Opened) {
+                selectedChannel = "focus"
+                error("metadata refresh failed")
+            }
+        }
+
+        assertEquals("focus", selectedChannel)
+        assertEquals("focus", state.mediaItem?.mediaId)
+        assertTrue(state.playWhenReady)
+        assertEquals(1, state.prepareCalls)
     }
 
     @Test
