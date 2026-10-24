@@ -101,7 +101,6 @@ class RadioPlaybackService : MediaLibraryService() {
             resolveRequestedChannel = this::resolveRequestedChannel,
             effectiveQualityForNextOpen = this::effectiveQualityForNextOpen,
             buildPlaybackItems = this::buildPlaybackItemsForChannel,
-            selectChannelImmediately = this::selectChannelImmediately,
             openSelectedStream = this::openSessionSelection,
         )
     }
@@ -341,6 +340,28 @@ class RadioPlaybackService : MediaLibraryService() {
         }
         channelSwitchJob?.cancel()
         channelSwitchJob = null
+        commitChannelSelection(normalizedChannel)
+    }
+
+    private fun openSessionSelection(channel: String): FreshStreamOpenResult {
+        return openFreshStream(
+            playWhenReadyAfterOpen = playbackDesired,
+            channelForOpen = channel,
+            onOpenSucceeded = { applySessionSelection(channel) },
+        )
+    }
+
+    private fun applySessionSelection(channel: String) {
+        val normalizedChannel = normalizePersistedChannel(channel)
+        freshStreamOpenCoordinator.invalidateChannelSwitch()
+        freshStreamPlayerEffects.restoreNormalVolume()
+        channelSwitchJob?.cancel()
+        channelSwitchJob = null
+        commitChannelSelection(normalizedChannel)
+        syncCurrentMediaItemMetadata()
+    }
+
+    private fun commitChannelSelection(normalizedChannel: String) {
         val previousChannels = ensureAllChannel(_channels.value)
         _selectedChannel.value = normalizedChannel
         _channels.update { ensureAllChannel(it + normalizedChannel) }
@@ -355,10 +376,6 @@ class RadioPlaybackService : MediaLibraryService() {
                 forceSelectedRefresh = false,
             )
         }
-    }
-
-    private fun openSessionSelection() {
-        openFreshStream(playWhenReadyAfterOpen = playbackDesired)
     }
 
     private fun switchChannelWithFade(channel: String) {
@@ -413,6 +430,8 @@ class RadioPlaybackService : MediaLibraryService() {
     private fun openFreshStream(
         restoreVolumeAfterOpen: Boolean = true,
         playWhenReadyAfterOpen: Boolean = true,
+        channelForOpen: String? = null,
+        onOpenSucceeded: () -> Unit = {},
     ): FreshStreamOpenResult {
         return runFreshStreamOpenTransaction(
             coordinator = freshStreamOpenCoordinator,
@@ -424,7 +443,7 @@ class RadioPlaybackService : MediaLibraryService() {
             },
         ) { openGeneration ->
             val selection = resolveFreshStreamSelection(
-                selectedChannel = _selectedChannel.value,
+                selectedChannel = channelForOpen ?: _selectedChannel.value,
                 activeQuality = _activeQuality.value,
                 pendingQuality = _pendingQuality.value,
             )
@@ -451,6 +470,7 @@ class RadioPlaybackService : MediaLibraryService() {
             }
             player.prepare()
             player.playWhenReady = playWhenReadyAfterOpen
+            onOpenSucceeded()
         }
     }
 

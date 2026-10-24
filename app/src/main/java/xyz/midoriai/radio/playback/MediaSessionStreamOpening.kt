@@ -8,8 +8,7 @@ internal class MediaSessionStreamOpening(
     private val resolveRequestedChannel: (List<MediaItem>) -> String,
     private val effectiveQualityForNextOpen: () -> String,
     private val buildPlaybackItems: (channel: String, quality: String) -> List<MediaItem>,
-    private val selectChannelImmediately: (String) -> Unit,
-    private val openSelectedStream: () -> Unit,
+    private val openSelectedStream: (String) -> FreshStreamOpenResult,
 ) {
     fun wrapPlayer(
         player: Player,
@@ -29,12 +28,13 @@ internal class MediaSessionStreamOpening(
     fun resolvePlaybackItems(requestedItems: List<MediaItem>): List<MediaItem> {
         val channel = normalizePersistedChannel(resolveRequestedChannel(requestedItems))
         val quality = effectiveQualityForNextOpen()
-        val playbackItems = buildPlaybackItems(channel, quality)
-        selectChannelImmediately(channel)
-        return playbackItems
+        return buildPlaybackItems(channel, quality)
     }
 
-    fun installResolvedSelection() {
-        openSelectedStream()
+    fun installResolvedSelection(installedItems: List<MediaItem>) {
+        val channel = normalizePersistedChannel(resolveRequestedChannel(installedItems))
+        check(openSelectedStream(channel) == FreshStreamOpenResult.Opened) {
+            "Session stream installation was rejected"
+        }
     }
 }

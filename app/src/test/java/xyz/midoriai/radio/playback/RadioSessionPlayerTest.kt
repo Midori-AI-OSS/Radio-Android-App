@@ -92,7 +92,7 @@ class RadioSessionPlayerTest {
     }
 
     @Test
-    fun mediaSessionSourceInstallation_isRoutedToCanonicalOpenCallback() {
+    fun pairedMediaSessionPrepare_delegatesAfterCanonicalSourceInstallation() {
         var delegatedSetCalls = 0
         var delegatedPrepareCalls = 0
         var canonicalOpenCalls = 0
@@ -117,7 +117,7 @@ class RadioSessionPlayerTest {
 
         assertEquals(1, canonicalOpenCalls)
         assertEquals(0, delegatedSetCalls)
-        assertEquals(0, delegatedPrepareCalls)
+        assertEquals(1, delegatedPrepareCalls)
     }
 
     @Test
@@ -154,10 +154,53 @@ class RadioSessionPlayerTest {
 
         assertEquals(6, canonicalOpenCalls)
         assertEquals(0, delegatedSetCalls)
-        assertEquals(0, delegatedPrepareCalls)
+        assertEquals(6, delegatedPrepareCalls)
 
         sessionPlayer.prepare()
 
+        assertEquals(7, delegatedPrepareCalls)
+    }
+
+    @Test
+    fun ordinaryPrepare_delegatesWithoutPriorSessionInstallation() {
+        var delegatedPrepareCalls = 0
+        val sessionPlayer = RadioSessionPlayer(
+            player = fakePlayer(
+                currentMediaItem = null,
+                onPrepare = { delegatedPrepareCalls += 1 },
+            ),
+            onPlay = {},
+            onPause = {},
+            onSelectAdjacentChannel = {},
+            onSetMediaItems = {},
+        )
+
+        sessionPlayer.prepare()
+
+        assertEquals(1, delegatedPrepareCalls)
+    }
+
+    @Test
+    fun failedCanonicalInstallation_doesNotSuppressLaterPrepare() {
+        var delegatedPrepareCalls = 0
+        val failure = IllegalStateException("open failed")
+        val sessionPlayer = RadioSessionPlayer(
+            player = fakePlayer(
+                currentMediaItem = null,
+                onPrepare = { delegatedPrepareCalls += 1 },
+            ),
+            onPlay = {},
+            onPause = {},
+            onSelectAdjacentChannel = {},
+            onSetMediaItems = { throw failure },
+        )
+
+        val thrown = runCatching {
+            sessionPlayer.setMediaItem(MediaItem.Builder().setMediaId("focus").build())
+        }.exceptionOrNull()
+        sessionPlayer.prepare()
+
+        assertTrue(thrown === failure)
         assertEquals(1, delegatedPrepareCalls)
     }
 
@@ -174,11 +217,12 @@ class RadioSessionPlayerTest {
                 events += "build:$channel:$quality"
                 listOf(MediaItem.Builder().setMediaId(channel).build())
             },
-            selectChannelImmediately = { channel ->
+            openSelectedStream = { channel ->
                 selectedChannel = channel
                 events += "select:$channel"
+                events += "open:$selectedChannel"
+                FreshStreamOpenResult.Opened
             },
-            openSelectedStream = { events += "open:$selectedChannel" },
         )
         val sessionPlayer = streamOpening.wrapPlayer(
             player = fakePlayer(
@@ -194,6 +238,10 @@ class RadioSessionPlayerTest {
         val returnedItems = streamOpening.resolvePlaybackItems(
             listOf(MediaItem.Builder().setMediaId(" Focus ").build()),
         )
+
+        assertEquals("all", selectedChannel)
+        assertEquals(listOf("build:focus:high"), events)
+
         sessionPlayer.setMediaItems(returnedItems, 0, C.TIME_UNSET)
         sessionPlayer.prepare()
 
@@ -203,7 +251,85 @@ class RadioSessionPlayerTest {
             events,
         )
         assertEquals(0, delegatedSetCalls)
-        assertEquals(0, delegatedPrepareCalls)
+        assertEquals(1, delegatedPrepareCalls)
+    }
+
+    @Test
+    fun unappliedOrRejectedSessionItems_doNotMutateSelection() {
+        val events = mutableListOf<String>()
+        var selectedChannel = "all"
+        val coordinator = FreshStreamOpenCoordinator()
+        val streamOpening = MediaSessionStreamOpening(
+            resolveRequestedChannel = { items -> items.first().mediaId },
+            effectiveQualityForNextOpen = { "high" },
+            buildPlaybackItems = { channel, _ ->
+                listOf(MediaItem.Builder().setMediaId(channel).build())
+            },
+            openSelectedStream = { channel ->
+                coordinator.runOpenTransaction {
+                    selectedChannel = channel
+                    events += "select:$channel"
+                }
+            },
+        )
+        val sessionPlayer = streamOpening.wrapPlayer(
+            player = fakePlayer(currentMediaItem = null),
+            onPlay = {},
+            onPause = {},
+            onSelectAdjacentChannel = {},
+        )
+        val returnedItems = streamOpening.resolvePlaybackItems(
+            listOf(MediaItem.Builder().setMediaId("focus").build()),
+        )
+
+        assertEquals("all", selectedChannel)
+        assertTrue(events.isEmpty())
+
+        val thrown = runCatching {
+            coordinator.runOpenTransaction {
+                sessionPlayer.setMediaItems(returnedItems, 0, C.TIME_UNSET)
+            }
+        }.exceptionOrNull()
+
+        assertTrue(thrown is IllegalStateException)
+        assertEquals("all", selectedChannel)
+        assertTrue(events.isEmpty())
+    }
+
+    @Test
+    fun failedInstalledItemResolution_doesNotOpenOrSuppressPrepare() {
+        var canonicalOpenCalls = 0
+        var delegatedPrepareCalls = 0
+        val failure = IllegalArgumentException("invalid session item")
+        val streamOpening = MediaSessionStreamOpening(
+            resolveRequestedChannel = { throw failure },
+            effectiveQualityForNextOpen = { "high" },
+            buildPlaybackItems = { channel, _ ->
+                listOf(MediaItem.Builder().setMediaId(channel).build())
+            },
+            openSelectedStream = {
+                canonicalOpenCalls += 1
+                FreshStreamOpenResult.Opened
+            },
+        )
+        val sessionPlayer = streamOpening.wrapPlayer(
+            player = fakePlayer(
+                currentMediaItem = null,
+                onPrepare = { delegatedPrepareCalls += 1 },
+            ),
+            onPlay = {},
+            onPause = {},
+            onSelectAdjacentChannel = {},
+        )
+
+        val thrown = runCatching {
+            sessionPlayer.setMediaItem(MediaItem.Builder().setMediaId("broken").build())
+        }.exceptionOrNull()
+        sessionPlayer.prepare()
+
+        assertTrue(thrown === failure)
+        assertEquals(0, canonicalOpenCalls)
+        assertEquals(1, delegatedPrepareCalls)
     }
 
     @Test
@@ -220,13 +346,14 @@ class RadioSessionPlayerTest {
             buildPlaybackItems = { channel, _ ->
                 listOf(MediaItem.Builder().setMediaId(channel).build())
             },
-            selectChannelImmediately = { channel -> selectedChannel = channel },
-            openSelectedStream = {
+            openSelectedStream = { channel ->
+                selectedChannel = channel
                 underlyingPlayer.setMediaItem(
                     MediaItem.Builder().setMediaId("canonical:$selectedChannel").build(),
                 )
                 underlyingPlayer.volume = 1f
                 underlyingPlayer.prepare()
+                FreshStreamOpenResult.Opened
             },
         )
         val sessionPlayer = streamOpening.wrapPlayer(
@@ -245,7 +372,7 @@ class RadioSessionPlayerTest {
         assertEquals("canonical:focus", playerState.currentMediaItem?.mediaId)
         assertEquals(1f, playerState.volume)
         assertEquals(1, playerState.setMediaItemCalls)
-        assertEquals(1, playerState.prepareCalls)
+        assertEquals(2, playerState.prepareCalls)
     }
 
     private data class FakePlayerState(

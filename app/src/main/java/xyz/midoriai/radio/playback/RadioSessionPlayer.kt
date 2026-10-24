@@ -10,10 +10,8 @@ internal class RadioSessionPlayer(
     private val onPlay: () -> Unit,
     private val onPause: () -> Unit,
     private val onSelectAdjacentChannel: (Int) -> Unit,
-    private val onSetMediaItems: () -> Unit,
+    private val onSetMediaItems: (List<MediaItem>) -> Unit,
 ) : ForwardingPlayer(player) {
-    private var canonicalPreparePending = false
-
     override fun play() {
         onPlay()
     }
@@ -55,46 +53,31 @@ internal class RadioSessionPlayer(
         startIndex: Int,
         startPositionMs: Long,
     ) {
-        openCanonicalSource()
+        openCanonicalSource(mediaItems)
     }
 
     override fun setMediaItems(mediaItems: List<MediaItem>) {
-        openCanonicalSource()
+        openCanonicalSource(mediaItems)
     }
 
     override fun setMediaItems(mediaItems: List<MediaItem>, resetPosition: Boolean) {
-        openCanonicalSource()
+        openCanonicalSource(mediaItems)
     }
 
     override fun setMediaItem(mediaItem: MediaItem) {
-        openCanonicalSource()
+        openCanonicalSource(listOf(mediaItem))
     }
 
     override fun setMediaItem(mediaItem: MediaItem, startPositionMs: Long) {
-        openCanonicalSource()
+        openCanonicalSource(listOf(mediaItem))
     }
 
     override fun setMediaItem(mediaItem: MediaItem, resetPosition: Boolean) {
-        openCanonicalSource()
+        openCanonicalSource(listOf(mediaItem))
     }
 
-    override fun prepare() {
-        if (canonicalPreparePending) {
-            canonicalPreparePending = false
-            return
-        }
-
-        super.prepare()
-    }
-
-    private fun openCanonicalSource() {
-        canonicalPreparePending = true
-        try {
-            onSetMediaItems()
-        } catch (failure: Throwable) {
-            canonicalPreparePending = false
-            throw failure
-        }
+    private fun openCanonicalSource(mediaItems: List<MediaItem>) {
+        onSetMediaItems(mediaItems)
     }
 
     override fun getDuration(): Long = C.TIME_UNSET

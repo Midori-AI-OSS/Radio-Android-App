@@ -1,6 +1,6 @@
 # [TASK] Centralize foreground stream opening and selection
 
-- Status: ready
+- Status: done
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
@@ -95,3 +95,11 @@ Make one service path responsible for admitting each foreground stream open/reop
 - `RadioSessionPlayer` leaves `canonicalPreparePending` set after an intercepted installation until a `prepare()` arrives, so an unmatched installation can suppress a later unrelated prepare. Replace the sticky pairing state with a safe pairing mechanism and test both the unmatched-prepare and callback-exception paths.
 - `resolvePlaybackItems()` calls `selectChannelImmediately()` before MediaSession applies the returned items, changing selection, persistence, and retry/fade state before installation. Move those effects to an accepted installation/open boundary and cover rejected or unapplied results.
 - Current tests use fake players and collaborators, not the actual service/MediaSession boundary. Add focused integration coverage for prepare pairing and selection/open state effects.
+
+## Closure (2026-10-24)
+
+- Removed prepare-suppression state. Both ordinary and MediaSession-paired prepares now delegate normally; canonical source replacement remains intercepted, and callback exceptions cannot affect a later prepare.
+- Session callback resolution is side-effect free. Selection is derived from the items Media3 actually installs, committed only after canonical open admission and successful source preparation, and rejected installation is surfaced as a failed player operation.
+- Added focused executable coverage across the session-opening collaborator and forwarding player for ordinary and paired prepare, unapplied results, admission rejection, resolution/open exceptions, fallback item installation, source preparation, and volume effects without adding a new test framework.
+- `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew test --console=plain`: passed.
+- `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew :app:assembleDebug --console=plain`: passed.
