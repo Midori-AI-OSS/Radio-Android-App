@@ -50,7 +50,9 @@ class MediaSessionMutationIntegrationTest {
     private val canonicalInstalls = mutableListOf<List<String>>()
     private var delegatedMutations = 0
     private var delegatedPrepares = 0
-    private var adjacentSelection = 0
+    private var adjacentSelectedChannel = "all"
+    private var adjacentPendingChannel: String? = null
+    private var adjacentInstalledChannel = "all"
 
     @Before
     fun setUp() {
@@ -81,12 +83,12 @@ class MediaSessionMutationIntegrationTest {
             player = underlyingPlayer,
             onPlay = {},
             onPause = {},
-            onSelectAdjacentChannel = { direction -> adjacentSelection += direction },
+            onSelectAdjacentChannel = ::selectAdjacentChannel,
         )
         val callback = object : RadioMediaSessionCallback(
             sessionExtras = { Bundle.EMPTY },
             resolvePlaybackItems = streamOpening::resolvePlaybackItems,
-            selectAdjacentChannel = { direction -> adjacentSelection += direction },
+            selectAdjacentChannel = ::selectAdjacentChannel,
             setQuality = {},
         ), MediaLibrarySession.Callback {}
         service = Robolectric.buildService(MediaSessionMutationTestService::class.java).create().get()
@@ -117,19 +119,24 @@ class MediaSessionMutationIntegrationTest {
     }
 
     @Test
-    fun adjacentSelectionDispatchesThroughPlayerAndProductionCustomCommand() {
+    fun adjacentMediaSessionCommandsResolveFromPendingTargetAndInstallLatestChannel() {
         controller.seekToNext()
         drainMainLooper()
-        assertEquals(1, adjacentSelection)
+        assertEquals("focus", adjacentPendingChannel)
 
         val resultFuture = controller.sendCustomCommand(
             SELECT_ADJACENT_CHANNEL_SESSION_COMMAND,
-            Bundle().apply { putInt(ARG_DIRECTION, -1) },
+            Bundle().apply { putInt(ARG_DIRECTION, 1) },
         )
         drainMainLooper()
 
         assertEquals(SessionResult.RESULT_SUCCESS, resultFuture.get(5, TimeUnit.SECONDS).resultCode)
-        assertEquals(0, adjacentSelection)
+        assertEquals("chill", adjacentPendingChannel)
+
+        commitPendingAdjacentSelection()
+
+        assertEquals("chill", adjacentSelectedChannel)
+        assertEquals("chill", adjacentInstalledChannel)
     }
 
     @Test
@@ -196,6 +203,30 @@ class MediaSessionMutationIntegrationTest {
 
     private fun drainMainLooper() {
         shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    private fun selectAdjacentChannel(direction: Int) {
+        dispatchAdjacentChannelSelection(
+            selectedChannel = adjacentSelectedChannel,
+            pendingChannelSelection = adjacentPendingChannel,
+            availableChannels = listOf("all", "focus", "chill"),
+            direction = direction,
+            selectChannel = { adjacentPendingChannel = it },
+        )
+    }
+
+    private fun commitPendingAdjacentSelection() {
+        val pendingChannel = checkNotNull(adjacentPendingChannel)
+        val result = openAndCommitChannelSelection(
+            channel = pendingChannel,
+            openSelectedStream = { channel, onOpened ->
+                adjacentInstalledChannel = channel
+                completeFreshStreamOpen(FreshStreamOpenResult.Opened, onOpened)
+            },
+            commitSelection = { adjacentSelectedChannel = it },
+        )
+        check(result == FreshStreamOpenResult.Opened)
+        adjacentPendingChannel = null
     }
 
     private fun sessionCompatiblePlayer(

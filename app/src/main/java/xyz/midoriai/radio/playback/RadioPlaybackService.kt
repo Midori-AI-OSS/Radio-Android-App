@@ -295,13 +295,13 @@ class RadioPlaybackService : MediaLibraryService() {
     }
 
     private fun selectAdjacentChannel(direction: Int) {
-        val adjacentChannel = resolveAdjacentChannelSelection(
-            selectedChannel = pendingChannelSelection ?: _selectedChannel.value,
+        dispatchAdjacentChannelSelection(
+            selectedChannel = _selectedChannel.value,
+            pendingChannelSelection = pendingChannelSelection,
             availableChannels = _channels.value,
             direction = direction,
-        ) ?: return
-
-        setChannel(adjacentChannel)
+            selectChannel = ::setChannel,
+        )
     }
 
     private fun setQuality(quality: String) {

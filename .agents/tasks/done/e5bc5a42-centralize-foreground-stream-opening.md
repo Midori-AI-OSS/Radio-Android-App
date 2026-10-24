@@ -1,6 +1,6 @@
 # [TASK] Centralize foreground stream opening and selection
 
-- Status: wip
+- Status: done
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
@@ -128,6 +128,13 @@ Make one service path responsible for admitting each foreground stream open/reop
 - Session selection finalization now runs after the source-install transaction completes. A metadata-refresh exception therefore cannot roll the player back after channel selection, persistence, and art effects have committed.
 - Metadata refresh rebuilds from the installed `MediaItem` and changes only metadata, preserving the admitted media ID, URI, and local configuration.
 - The service-facing session admission policy is shared with a Robolectric `MediaLibrarySession`/`MediaController` integration test. Coverage now executes supported adjacent selection, denied move mutations, and controller prepare delegation.
+- `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew test --rerun-tasks --console=plain`: passed (24 tasks executed).
+- `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew :app:assembleDebug --rerun-tasks --console=plain`: passed (36 tasks executed).
+
+## Final closure (2026-10-24)
+
+- Adjacent MediaSession selection now uses the shared `dispatchAdjacentChannelSelection` production seam, which resolves each command from the pending target when present.
+- Focused coordinator and MediaSession integration coverage verifies rapid adjacent commands commit and install the latest resolved channel.
 - `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew test --rerun-tasks --console=plain`: passed (24 tasks executed).
 - `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew :app:assembleDebug --rerun-tasks --console=plain`: passed (36 tasks executed).
 

@@ -498,6 +498,57 @@ class FreshStreamOpenCoordinatorTest {
     }
 
     @Test
+    fun adjacentMediaSessionSelection_usesPendingTargetAndCommitsLatestInstalledChannel() {
+        val state = InstallationPlayerState(
+            mediaItem = MediaItem.Builder().setMediaId("all").build(),
+            playWhenReady = true,
+            playbackState = Player.STATE_READY,
+        )
+        val player = installationPlayer(state)
+        var selectedChannel = "all"
+        var pendingChannelSelection: String? = null
+
+        dispatchAdjacentChannelSelection(
+            selectedChannel = selectedChannel,
+            pendingChannelSelection = pendingChannelSelection,
+            availableChannels = listOf("all", "focus", "chill"),
+            direction = 1,
+            selectChannel = { pendingChannelSelection = it },
+        )
+        assertEquals("focus", pendingChannelSelection)
+
+        dispatchAdjacentChannelSelection(
+            selectedChannel = selectedChannel,
+            pendingChannelSelection = pendingChannelSelection,
+            availableChannels = listOf("all", "focus", "chill"),
+            direction = 1,
+            selectChannel = { pendingChannelSelection = it },
+        )
+
+        assertEquals("chill", pendingChannelSelection)
+        val result = openAndCommitChannelSelection(
+            channel = checkNotNull(pendingChannelSelection),
+            openSelectedStream = { channel, onOpened ->
+                FreshStreamPlayerInstaller(player).install(
+                    replaceSource = {
+                        player.setMediaItem(MediaItem.Builder().setMediaId(channel).build())
+                    },
+                    playWhenReady = true,
+                    onFailed = {},
+                )
+                completeFreshStreamOpen(FreshStreamOpenResult.Opened, onOpened)
+            },
+            commitSelection = { selectedChannel = it },
+        )
+        pendingChannelSelection = null
+
+        assertEquals(FreshStreamOpenResult.Opened, result)
+        assertEquals("chill", selectedChannel)
+        assertEquals("chill", state.mediaItem?.mediaId)
+        assertNull(pendingChannelSelection)
+    }
+
+    @Test
     fun rejectedOpen_cannotContinueChannelSwitch() {
         assertFalse(
             shouldContinueChannelSwitch(
