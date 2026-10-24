@@ -1,6 +1,6 @@
 # [TASK] Centralize foreground stream opening and selection
 
-- Status: done
+- Status: wip
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
@@ -22,10 +22,10 @@ Make one service path responsible for admitting each foreground stream open/reop
 
 ## Acceptance criteria
 
-- [x] All foreground stream source replacements, including session-originated playback and recovery opens, converge on one canonical service-side opener.
-- [x] A stale callback/retry, or rapid channel/quality changes, cannot open an older selection over the current one; selection and effective quality are resolved at open admission using existing active/pending-quality semantics.
-- [x] At most one source-replacement/prepare transaction is admitted at a time. A newer explicit selection supersedes older pending work, and opening/retry work cannot race the channel fade into duplicate connections, incorrect selection, or incorrect volume restoration.
-- [x] Behavior-focused tests demonstrate single-flight admission, latest effective channel/quality winning after rapid changes, stale callback/retry rejection, retry/fade overlap, and pause/stop invalidation of delayed opening work.
+- [ ] All foreground stream source replacements, including session-originated playback and recovery opens, converge on one canonical service-side opener.
+- [ ] A stale callback/retry, or rapid channel/quality changes, cannot open an older selection over the current one; selection and effective quality are resolved at open admission using existing active/pending-quality semantics.
+- [ ] At most one source-replacement/prepare transaction is admitted at a time. A newer explicit selection supersedes older pending work, and opening/retry work cannot race the channel fade into duplicate connections, incorrect selection, or incorrect volume restoration.
+- [ ] Behavior-focused tests demonstrate single-flight admission, latest effective channel/quality winning after rapid changes, stale callback/retry rejection, retry/fade overlap, and pause/stop invalidation of delayed opening work.
 - [ ] `./gradlew test` and `./gradlew :app:assembleDebug` pass (blocked: Android SDK location is not configured in this checkout).
 
 ## Audit findings (2026-10-24)
@@ -40,5 +40,14 @@ Make one service path responsible for admitting each foreground stream open/reop
 
 - Session selection now preserves the MediaSession callback return contract without starting a parallel fade/open transaction.
 - Fresh opens restore normal volume in their `finally` block; fades own restoration only while their generation remains current, including cancellation and supersession.
-- Added coordinator and service-path coverage for rapid selection, stale delayed opens, session selection, and fade-volume ownership.
+- Added coordinator predicate tests and source-text checks for selected service-path structure; these do not verify the listed runtime behavior.
 - `./gradlew test` and `./gradlew :app:assembleDebug` remain blocked by the missing Android SDK location.
+
+## Re-audit findings (2026-10-24)
+
+- `SessionCallback.onSetMediaItems()` returns `playbackItems` and selects with `openStream = false`; MediaSession installs the returned items outside `openFreshStream()`. Coordinate the required callback result with canonical open admission so session playback has exactly one source replacement.
+- `selectChannelImmediately()` does not invalidate pending reconnect work. Invalidate or reconcile retries on selection changes, including session-originated selections.
+- `switchChannelWithFade()` proceeds to fade up and poll even when `openFreshStream()` silently rejects admission because another open is active. Return an admission/result outcome or coordinate the transaction so a rejected open cannot be treated as a successful switch.
+- Replace source-text assertions with behavioral coverage for session/open integration, selection invalidating retries, rejected switch opens, and actual volume restoration across cancellation/supersession. Current tests exercise coordinator helpers but do not prove these service interactions.
+- The single-item playlist still has target-index seek and automatic-transition restore machinery. Review which parts remain necessary, simplifying only obsolete open-flow recovery while preserving browse behavior and adjacent-channel selection.
+- Gradle verification remains blocked by the missing Android SDK location; Docker verification is unavailable because access to `/var/run/docker.sock` is denied.
