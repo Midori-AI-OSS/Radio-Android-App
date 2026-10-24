@@ -143,4 +143,70 @@ class FreshStreamOpenCoordinatorTest {
 
         assertFalse(coordinator.isCurrentChannelSwitch(newerSwitch))
     }
+
+    @Test
+    fun runOpenTransaction_rejectsReentrantSourceReplacement() {
+        val coordinator = FreshStreamOpenCoordinator()
+        var nestedResult: FreshStreamOpenResult? = null
+
+        val outerResult = coordinator.runOpenTransaction {
+            nestedResult = coordinator.runOpenTransaction { error("must not run") }
+        }
+
+        assertEquals(FreshStreamOpenResult.Opened, outerResult)
+        assertEquals(FreshStreamOpenResult.Rejected, nestedResult)
+    }
+
+    @Test
+    fun selectionSupersession_invalidatesRetryAndRestoresVolume() {
+        val coordinator = FreshStreamOpenCoordinator()
+        val queuedRetry = coordinator.currentGeneration()
+        var volume = 0f
+
+        coordinator.supersedeForSelection { volume = 1f }
+
+        assertEquals(1f, volume)
+        assertFalse(
+            coordinator.canRunDelayedOpen(
+                queuedGeneration = queuedRetry,
+                playbackDesired = true,
+                channelSwitchInProgress = false,
+            ),
+        )
+    }
+
+    @Test
+    fun switchCompletion_restoresVolumeOnCancellationButNotAfterSupersession() {
+        val coordinator = FreshStreamOpenCoordinator()
+        var volume = 0f
+        val cancelledSwitch = coordinator.beginChannelSwitch()
+
+        coordinator.finishChannelSwitch(cancelledSwitch) { volume = 1f }
+        assertEquals(1f, volume)
+
+        volume = 0f
+        val supersededSwitch = coordinator.beginChannelSwitch()
+        coordinator.supersedeForSelection { volume = 1f }
+        coordinator.finishChannelSwitch(supersededSwitch) { volume = 0.5f }
+
+        assertEquals(1f, volume)
+    }
+
+    @Test
+    fun rejectedOpen_cannotContinueChannelSwitch() {
+        assertFalse(
+            shouldContinueChannelSwitch(
+                openResult = FreshStreamOpenResult.Rejected,
+                isCurrentSwitch = true,
+                playbackDesired = true,
+            ),
+        )
+        assertTrue(
+            shouldContinueChannelSwitch(
+                openResult = FreshStreamOpenResult.Opened,
+                isCurrentSwitch = true,
+                playbackDesired = true,
+            ),
+        )
+    }
 }

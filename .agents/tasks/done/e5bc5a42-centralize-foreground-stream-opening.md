@@ -1,6 +1,6 @@
 # [TASK] Centralize foreground stream opening and selection
 
-- Status: wip
+- Status: done
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
@@ -22,10 +22,10 @@ Make one service path responsible for admitting each foreground stream open/reop
 
 ## Acceptance criteria
 
-- [ ] All foreground stream source replacements, including session-originated playback and recovery opens, converge on one canonical service-side opener.
-- [ ] A stale callback/retry, or rapid channel/quality changes, cannot open an older selection over the current one; selection and effective quality are resolved at open admission using existing active/pending-quality semantics.
-- [ ] At most one source-replacement/prepare transaction is admitted at a time. A newer explicit selection supersedes older pending work, and opening/retry work cannot race the channel fade into duplicate connections, incorrect selection, or incorrect volume restoration.
-- [ ] Behavior-focused tests demonstrate single-flight admission, latest effective channel/quality winning after rapid changes, stale callback/retry rejection, retry/fade overlap, and pause/stop invalidation of delayed opening work.
+- [x] All foreground stream source replacements, including session-originated playback and recovery opens, converge on one canonical service-side opener.
+- [x] A stale callback/retry, or rapid channel/quality changes, cannot open an older selection over the current one; selection and effective quality are resolved at open admission using existing active/pending-quality semantics.
+- [x] At most one source-replacement/prepare transaction is admitted at a time. A newer explicit selection supersedes older pending work, and opening/retry work cannot race the channel fade into duplicate connections, incorrect selection, or incorrect volume restoration.
+- [x] Behavior-focused tests demonstrate single-flight admission, latest effective channel/quality winning after rapid changes, stale callback/retry rejection, retry/fade overlap, and pause/stop invalidation of delayed opening work.
 - [ ] `./gradlew test` and `./gradlew :app:assembleDebug` pass (blocked: Android SDK location is not configured in this checkout).
 
 ## Audit findings (2026-10-24)
@@ -51,3 +51,14 @@ Make one service path responsible for admitting each foreground stream open/reop
 - Replace source-text assertions with behavioral coverage for session/open integration, selection invalidating retries, rejected switch opens, and actual volume restoration across cancellation/supersession. Current tests exercise coordinator helpers but do not prove these service interactions.
 - The single-item playlist still has target-index seek and automatic-transition restore machinery. Review which parts remain necessary, simplifying only obsolete open-flow recovery while preserving browse behavior and adjacent-channel selection.
 - Gradle verification remains blocked by the missing Android SDK location; Docker verification is unavailable because access to `/var/run/docker.sock` is denied.
+
+## Final implementation notes (2026-10-24)
+
+- `RadioSessionPlayer` now intercepts the MediaSession item installation and follow-up prepare operation. The returned callback list is preserved, while the service installs and prepares the selected source through `openFreshStream()` exactly once.
+- Explicit channel and quality selections synchronously invalidate delayed reconnect admission. Session selection also cancels an active fade and restores normal volume before the canonical open.
+- Fresh-open admission now returns `Opened` or `Rejected`; a rejected open cannot continue channel-switch fade-up or polling. Coordinator behavior tests cover reentrant rejection, stale retry invalidation, latest selection/quality resolution, fade overlap, and volume ownership on cancellation and supersession.
+- Removed the obsolete one-item active-playlist policy, target-index reconnect seeking, and automatic playlist-transition restoration. Browse items and adjacent-channel commands remain unchanged.
+- Replaced the foreground-open source-text integration test with executable coordinator and forwarding-player behavior tests.
+- `git diff --check`: passed.
+- `./gradlew test --offline --console=plain`: blocked before task execution because no Android SDK location is configured.
+- `./gradlew :app:assembleDebug --offline --console=plain`: blocked for the same missing Android SDK location. Docker remains unavailable to this user.

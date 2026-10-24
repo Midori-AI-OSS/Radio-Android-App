@@ -13,6 +13,13 @@ internal class FreshStreamOpenCoordinator {
         return generation
     }
 
+    fun supersedeForSelection(onSupersededSwitch: () -> Unit): Long {
+        val invalidatedGeneration = invalidatePendingWork()
+        invalidateChannelSwitch()
+        onSupersededSwitch()
+        return invalidatedGeneration
+    }
+
     fun currentGeneration(): Long = generation
 
     fun beginChannelSwitch(): Long {
@@ -29,6 +36,15 @@ internal class FreshStreamOpenCoordinator {
         return queuedGeneration == channelSwitchGeneration
     }
 
+    fun finishChannelSwitch(
+        queuedGeneration: Long,
+        restoreVolume: () -> Unit,
+    ) {
+        if (isCurrentChannelSwitch(queuedGeneration)) {
+            restoreVolume()
+        }
+    }
+
     fun tryBeginOpen(): Long? {
         if (opening) {
             return null
@@ -42,6 +58,18 @@ internal class FreshStreamOpenCoordinator {
         opening = false
     }
 
+    fun runOpenTransaction(transaction: (openGeneration: Long) -> Unit): FreshStreamOpenResult {
+        val openGeneration = tryBeginOpen() ?: return FreshStreamOpenResult.Rejected
+
+        try {
+            transaction(openGeneration)
+        } finally {
+            finishOpen()
+        }
+
+        return FreshStreamOpenResult.Opened
+    }
+
     fun canRunDelayedOpen(
         queuedGeneration: Long,
         playbackDesired: Boolean,
@@ -52,6 +80,19 @@ internal class FreshStreamOpenCoordinator {
             !channelSwitchInProgress &&
             queuedGeneration == generation
     }
+}
+
+internal enum class FreshStreamOpenResult {
+    Opened,
+    Rejected,
+}
+
+internal fun shouldContinueChannelSwitch(
+    openResult: FreshStreamOpenResult,
+    isCurrentSwitch: Boolean,
+    playbackDesired: Boolean,
+): Boolean {
+    return openResult == FreshStreamOpenResult.Opened && isCurrentSwitch && playbackDesired
 }
 
 internal data class FreshStreamSelection(

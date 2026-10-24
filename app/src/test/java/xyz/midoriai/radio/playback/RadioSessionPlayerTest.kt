@@ -35,6 +35,7 @@ class RadioSessionPlayerTest {
             onPlay = {},
             onPause = {},
             onSelectAdjacentChannel = {},
+            onSetMediaItems = {},
         )
 
         assertEquals(C.TIME_UNSET, sessionPlayer.duration)
@@ -53,6 +54,7 @@ class RadioSessionPlayerTest {
             onPlay = { callbacks += "play" },
             onPause = { callbacks += "pause" },
             onSelectAdjacentChannel = { direction -> callbacks += "adjacent:$direction" },
+            onSetMediaItems = { callbacks += "set-media-items" },
         )
 
         sessionPlayer.play()
@@ -64,6 +66,11 @@ class RadioSessionPlayerTest {
         sessionPlayer.seekToPreviousMediaItem()
         sessionPlayer.seekToNext()
         sessionPlayer.seekToPrevious()
+        sessionPlayer.setMediaItems(
+            listOf(MediaItem.fromUri("https://example.test/stream")),
+            0,
+            C.TIME_UNSET,
+        )
 
         assertEquals(
             listOf(
@@ -76,6 +83,7 @@ class RadioSessionPlayerTest {
                 "adjacent:-1",
                 "adjacent:1",
                 "adjacent:-1",
+                "set-media-items",
             ),
             callbacks,
         )
@@ -83,10 +91,41 @@ class RadioSessionPlayerTest {
         assertNull(sessionPlayer.currentMediaItem)
     }
 
+    @Test
+    fun mediaSessionSourceInstallation_isRoutedToCanonicalOpenCallback() {
+        var delegatedSetCalls = 0
+        var delegatedPrepareCalls = 0
+        var canonicalOpenCalls = 0
+        val sessionPlayer = RadioSessionPlayer(
+            player = fakePlayer(
+                currentMediaItem = null,
+                onSetMediaItems = { delegatedSetCalls += 1 },
+                onPrepare = { delegatedPrepareCalls += 1 },
+            ),
+            onPlay = {},
+            onPause = {},
+            onSelectAdjacentChannel = {},
+            onSetMediaItems = { canonicalOpenCalls += 1 },
+        )
+
+        sessionPlayer.setMediaItems(
+            listOf(MediaItem.fromUri("https://example.test/focus")),
+            0,
+            C.TIME_UNSET,
+        )
+        sessionPlayer.prepare()
+
+        assertEquals(1, canonicalOpenCalls)
+        assertEquals(0, delegatedSetCalls)
+        assertEquals(0, delegatedPrepareCalls)
+    }
+
     private fun fakePlayer(
         duration: Long = 0L,
         contentDuration: Long = 0L,
         currentMediaItem: MediaItem? = null,
+        onSetMediaItems: () -> Unit = {},
+        onPrepare: () -> Unit = {},
     ): Player {
         val handler = InvocationHandler { _, method, args ->
             when (method.name) {
@@ -101,6 +140,8 @@ class RadioSessionPlayerTest {
                 "getPlaybackState" -> Player.STATE_IDLE
                 "getRepeatMode" -> Player.REPEAT_MODE_OFF
                 "getCurrentTimeline" -> androidx.media3.common.Timeline.EMPTY
+                "setMediaItems" -> onSetMediaItems()
+                "prepare" -> onPrepare()
                 "hashCode" -> System.identityHashCode(method)
                 "equals" -> args?.firstOrNull() === this
                 "toString" -> "FakePlayer"
