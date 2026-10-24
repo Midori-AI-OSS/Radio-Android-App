@@ -102,4 +102,45 @@ class FreshStreamOpenCoordinatorTest {
             ),
         )
     }
+
+    @Test
+    fun rapidChannelAndQualityChanges_resolveOnlyTheLatestSelectionAtOpenAdmission() {
+        val coordinator = FreshStreamOpenCoordinator()
+        val staleRetryGeneration = coordinator.currentGeneration()
+
+        coordinator.invalidatePendingWork()
+        coordinator.invalidatePendingWork()
+        val admittedGeneration = coordinator.tryBeginOpen()
+
+        assertFalse(
+            coordinator.canRunDelayedOpen(
+                queuedGeneration = staleRetryGeneration,
+                playbackDesired = true,
+                channelSwitchInProgress = false,
+            ),
+        )
+        assertEquals(3L, admittedGeneration)
+        assertEquals(
+            FreshStreamSelection(channel = "ambient", quality = "high"),
+            resolveFreshStreamSelection(
+                selectedChannel = " ambient ",
+                activeQuality = "low",
+                pendingQuality = "high",
+            ),
+        )
+    }
+
+    @Test
+    fun channelSwitchVolumeRestoration_belongsOnlyToTheLatestSwitch() {
+        val coordinator = FreshStreamOpenCoordinator()
+        val olderSwitch = coordinator.beginChannelSwitch()
+        val newerSwitch = coordinator.beginChannelSwitch()
+
+        assertFalse(coordinator.isCurrentChannelSwitch(olderSwitch))
+        assertTrue(coordinator.isCurrentChannelSwitch(newerSwitch))
+
+        coordinator.invalidateChannelSwitch()
+
+        assertFalse(coordinator.isCurrentChannelSwitch(newerSwitch))
+    }
 }

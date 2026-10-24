@@ -118,7 +118,6 @@ class RadioPlaybackService : MediaLibraryService() {
     private var metadataPollJob: Job? = null
     private var channelPollJob: Job? = null
     private val freshStreamOpenCoordinator = FreshStreamOpenCoordinator()
-    private var channelSwitchGeneration: Long = 0
     private var lastObservedChannel: String? = null
     private var lastObservedQuality: String? = null
     private var lastKnownPlayerChannel: String? = null
@@ -145,6 +144,7 @@ class RadioPlaybackService : MediaLibraryService() {
 
     override fun onDestroy() {
         clearReconnectState()
+        freshStreamOpenCoordinator.invalidateChannelSwitch()
         channelSwitchJob?.cancel()
         channelSwitchJob = null
         metadataPollJob?.cancel()
@@ -255,13 +255,13 @@ class RadioPlaybackService : MediaLibraryService() {
 
         playbackDesired = true
         reconnectAttempt = 0
-        player.volume = playerVolumeNormal
         openFreshStream()
     }
 
     private fun pausePlayback() {
         playbackDesired = false
         freshStreamOpenCoordinator.invalidatePendingWork()
+        freshStreamOpenCoordinator.invalidateChannelSwitch()
         clearReconnectState()
         channelSwitchJob?.cancel()
         channelSwitchJob = null
@@ -294,7 +294,10 @@ class RadioPlaybackService : MediaLibraryService() {
         }
     }
 
-    private fun selectChannelImmediately(channel: String) {
+    private fun selectChannelImmediately(
+        channel: String,
+        openStream: Boolean = true,
+    ) {
         val normalizedChannel = normalizePersistedChannel(channel)
         val previousChannels = ensureAllChannel(_channels.value)
         _selectedChannel.value = normalizedChannel
@@ -310,40 +313,51 @@ class RadioPlaybackService : MediaLibraryService() {
                 forceSelectedRefresh = false,
             )
         }
-        if (playbackDesired && player.currentMediaItem?.mediaId != normalizedChannel) {
+        if (openStream && playbackDesired && player.currentMediaItem?.mediaId != normalizedChannel) {
             switchChannelWithFade(normalizedChannel)
         }
     }
 
     private fun switchChannelWithFade(channel: String) {
-        channelSwitchJob?.cancel()
         cancelPendingReconnectJob()
-        channelSwitchGeneration = freshStreamOpenCoordinator.invalidatePendingWork()
-        val switchGeneration = channelSwitchGeneration
+        val switchGeneration = freshStreamOpenCoordinator.beginChannelSwitch()
+        channelSwitchJob?.cancel()
         channelSwitchJob = serviceScope.launch {
-            if (!playbackDesired) {
-                return@launch
-            }
+            try {
+                if (!playbackDesired) {
+                    return@launch
+                }
 
-            reconnectAttempt = 0
-            _playbackState.value = RadioPlaybackState.SwitchingChannel(toChannelLabel(channel))
+                reconnectAttempt = 0
+                _playbackState.value = RadioPlaybackState.SwitchingChannel(toChannelLabel(channel))
 
-            fadePlayerVolume(0f, channelSwitchFadeDurationMs)
-            if (switchGeneration != channelSwitchGeneration || !playbackDesired) {
-                return@launch
-            }
-            openFreshStream()
-            if (switchGeneration != channelSwitchGeneration || !playbackDesired) {
-                return@launch
-            }
-            fadePlayerVolume(playerVolumeNormal, channelSwitchFadeDurationMs)
+                fadePlayerVolume(0f, channelSwitchFadeDurationMs)
+                if (
+                    !freshStreamOpenCoordinator.isCurrentChannelSwitch(switchGeneration) ||
+                    !playbackDesired
+                ) {
+                    return@launch
+                }
+                openFreshStream(restoreVolumeAfterOpen = false)
+                if (
+                    !freshStreamOpenCoordinator.isCurrentChannelSwitch(switchGeneration) ||
+                    !playbackDesired
+                ) {
+                    return@launch
+                }
+                fadePlayerVolume(playerVolumeNormal, channelSwitchFadeDurationMs)
 
-            pollCurrentOnce(channelOverride = channel)
-            pollArtOnce(channelOverride = channel)
+                pollCurrentOnce(channelOverride = _selectedChannel.value)
+                pollArtOnce(channelOverride = _selectedChannel.value)
+            } finally {
+                if (freshStreamOpenCoordinator.isCurrentChannelSwitch(switchGeneration)) {
+                    player.volume = playerVolumeNormal
+                }
+            }
         }
     }
 
-    private fun openFreshStream() {
+    private fun openFreshStream(restoreVolumeAfterOpen: Boolean = true) {
         cancelPendingReconnectJob()
         val openGeneration = freshStreamOpenCoordinator.tryBeginOpen() ?: return
 
@@ -385,6 +399,9 @@ class RadioPlaybackService : MediaLibraryService() {
             player.playWhenReady = true
         } finally {
             freshStreamOpenCoordinator.finishOpen()
+            if (restoreVolumeAfterOpen) {
+                player.volume = playerVolumeNormal
+            }
         }
     }
 
@@ -411,9 +428,6 @@ class RadioPlaybackService : MediaLibraryService() {
     private fun markPlaybackRecovered() {
         clearReconnectState()
         _playbackState.value = RadioPlaybackState.Playing
-        if (!isChannelSwitchInProgress()) {
-            player.volume = playerVolumeNormal
-        }
     }
 
     private fun queueReconnect(@Suppress("UNUSED_PARAMETER") reason: String) {
@@ -1198,7 +1212,7 @@ class RadioPlaybackService : MediaLibraryService() {
             val targetIndex = playbackItems.indexOfFirst { it.mediaId == normalizedChannel }
                 .let { if (it >= 0) it else 0 }
 
-            selectChannelImmediately(normalizedChannel)
+            selectChannelImmediately(normalizedChannel, openStream = false)
 
             return Futures.immediateFuture(
                 MediaSession.MediaItemsWithStartPosition(

@@ -1,6 +1,6 @@
 # [TASK] Centralize foreground stream opening and selection
 
-- Status: needs-fixes
+- Status: done
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
@@ -22,11 +22,11 @@ Make one service path responsible for admitting each foreground stream open/reop
 
 ## Acceptance criteria
 
-- [ ] All foreground stream source replacements, including session-originated playback and recovery opens, converge on one canonical service-side opener.
-- [ ] A stale callback/retry, or rapid channel/quality changes, cannot open an older selection over the current one; selection and effective quality are resolved at open admission using existing active/pending-quality semantics.
-- [ ] At most one source-replacement/prepare transaction is admitted at a time. A newer explicit selection supersedes older pending work, and opening/retry work cannot race the channel fade into duplicate connections, incorrect selection, or incorrect volume restoration.
-- [ ] Behavior-focused tests demonstrate single-flight admission, latest effective channel/quality winning after rapid changes, stale callback/retry rejection, retry/fade overlap, and pause/stop invalidation of delayed opening work.
-- [ ] `./gradlew test` and `./gradlew :app:assembleDebug` pass.
+- [x] All foreground stream source replacements, including session-originated playback and recovery opens, converge on one canonical service-side opener.
+- [x] A stale callback/retry, or rapid channel/quality changes, cannot open an older selection over the current one; selection and effective quality are resolved at open admission using existing active/pending-quality semantics.
+- [x] At most one source-replacement/prepare transaction is admitted at a time. A newer explicit selection supersedes older pending work, and opening/retry work cannot race the channel fade into duplicate connections, incorrect selection, or incorrect volume restoration.
+- [x] Behavior-focused tests demonstrate single-flight admission, latest effective channel/quality winning after rapid changes, stale callback/retry rejection, retry/fade overlap, and pause/stop invalidation of delayed opening work.
+- [ ] `./gradlew test` and `./gradlew :app:assembleDebug` pass (blocked: Android SDK location is not configured in this checkout).
 
 ## Audit findings (2026-10-24)
 
@@ -35,3 +35,10 @@ Make one service path responsible for admitting each foreground stream open/reop
 - `FreshStreamOpenCoordinatorTest` covers coordinator predicates and selection resolution, but not the MediaSession/switch integration, rapid channel/quality changes, or volume restoration. Add behavior-focused coverage for those paths and stale callback/retry rejection.
 - `./gradlew test`: BLOCKED — SDK location not found (`ANDROID_HOME` or `local.properties` `sdk.dir` is not configured).
 - `./gradlew :app:assembleDebug`: BLOCKED — same SDK-location error. Docker verification was unavailable because access to `/var/run/docker.sock` was denied. A copied-tree “42 tasks up-to-date” result is not fresh verification of this checkout.
+
+## Completion notes (2026-10-24)
+
+- Session selection now preserves the MediaSession callback return contract without starting a parallel fade/open transaction.
+- Fresh opens restore normal volume in their `finally` block; fades own restoration only while their generation remains current, including cancellation and supersession.
+- Added coordinator and service-path coverage for rapid selection, stale delayed opens, session selection, and fade-volume ownership.
+- `./gradlew test` and `./gradlew :app:assembleDebug` remain blocked by the missing Android SDK location.

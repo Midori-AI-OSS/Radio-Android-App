@@ -5,6 +5,7 @@ import xyz.midoriai.radio.radioapi.normalizeQuality
 /** Coordinates short-lived player source replacement transactions. */
 internal class FreshStreamOpenCoordinator {
     private var generation = 0L
+    private var channelSwitchGeneration = 0L
     private var opening = false
 
     fun invalidatePendingWork(): Long {
@@ -13,6 +14,20 @@ internal class FreshStreamOpenCoordinator {
     }
 
     fun currentGeneration(): Long = generation
+
+    fun beginChannelSwitch(): Long {
+        invalidatePendingWork()
+        channelSwitchGeneration += 1
+        return channelSwitchGeneration
+    }
+
+    fun invalidateChannelSwitch() {
+        channelSwitchGeneration += 1
+    }
+
+    fun isCurrentChannelSwitch(queuedGeneration: Long): Boolean {
+        return queuedGeneration == channelSwitchGeneration
+    }
 
     fun tryBeginOpen(): Long? {
         if (opening) {
