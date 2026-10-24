@@ -1,6 +1,6 @@
 # [TASK] Centralize foreground stream opening and selection
 
-- Status: done
+- Status: ready
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
@@ -89,3 +89,9 @@ Make one service path responsible for admitting each foreground stream open/reop
 - Added executable wrapper/service-facing tests for every installation overload, fallback `setMediaItem(...)`, canonical source preparation and volume restoration, ordinary prepare delegation, and rejected-open retry preservation.
 - `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew test --console=plain`: passed.
 - `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew :app:assembleDebug --console=plain`: passed.
+
+## Re-audit (2026-10-24)
+
+- `RadioSessionPlayer` leaves `canonicalPreparePending` set after an intercepted installation until a `prepare()` arrives, so an unmatched installation can suppress a later unrelated prepare. Replace the sticky pairing state with a safe pairing mechanism and test both the unmatched-prepare and callback-exception paths.
+- `resolvePlaybackItems()` calls `selectChannelImmediately()` before MediaSession applies the returned items, changing selection, persistence, and retry/fade state before installation. Move those effects to an accepted installation/open boundary and cover rejected or unapplied results.
+- Current tests use fake players and collaborators, not the actual service/MediaSession boundary. Add focused integration coverage for prepare pairing and selection/open state effects.
