@@ -1,6 +1,6 @@
 # [TASK] Centralize foreground stream opening and selection
 
-- Status: done
+- Status: wip
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
@@ -116,3 +116,9 @@ Make one service path responsible for admitting each foreground stream open/reop
 - Admitted source installation and preparation failures restore the prior player item, play intent, quality/cache state, volume ownership, and a non-switching playback state. Failed opens now have an explicit result and cannot continue a channel switch.
 - `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew test --console=plain`: passed.
 - `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew :app:assembleDebug --console=plain`: passed.
+
+## Re-audit (2026-10-24)
+
+- Remains WIP: `applySessionSelection()` commits selection and starts persistence/art side effects before `syncCurrentMediaItemMetadata()`. If metadata replacement throws, `FreshStreamPlayerInstaller` restores the previous player item but `openFreshStream()`'s failure handler does not restore the selected channel or those side effects. Make this selection commit transactional and test a metadata-sync failure after admission.
+- `MediaSessionMutationIntegrationTest` creates a test-local `MutationCallback` and `MediaSession`, rather than exercising `RadioPlaybackService.SessionCallback` and its `MediaLibrarySession` wiring. Cover the production callback boundary; also assert adjacent-channel dispatch changes selection, and cover controller `moveMediaItem(s)` and `prepare()` behavior/effects. Current adjacent-channel assertions only check command availability; move and controller-prepare operations are not exercised.
+- Fresh verification passed: `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew test --rerun-tasks --console=plain` and `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew :app:assembleDebug --rerun-tasks --console=plain`.
