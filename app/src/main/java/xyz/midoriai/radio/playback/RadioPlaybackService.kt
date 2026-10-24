@@ -130,6 +130,7 @@ class RadioPlaybackService : MediaLibraryService() {
     private var reconnectAttempt: Int = 0
     private var reconnectJob: Job? = null
     private var channelSwitchJob: Job? = null
+    private var pendingChannelSelection: String? = null
     private var metadataPollJob: Job? = null
     private var channelPollJob: Job? = null
     private val freshStreamOpenCoordinator = FreshStreamOpenCoordinator()
@@ -295,7 +296,7 @@ class RadioPlaybackService : MediaLibraryService() {
 
     private fun selectAdjacentChannel(direction: Int) {
         val adjacentChannel = resolveAdjacentChannelSelection(
-            selectedChannel = _selectedChannel.value,
+            selectedChannel = pendingChannelSelection ?: _selectedChannel.value,
             availableChannels = _channels.value,
             direction = direction,
         ) ?: return
@@ -322,30 +323,38 @@ class RadioPlaybackService : MediaLibraryService() {
 
     private fun setChannel(channel: String) {
         val normalizedChannel = normalizePersistedChannel(channel)
-        selectChannelImmediately(normalizedChannel)
+        prepareForChannelSelection()
         if (playbackDesired && player.currentMediaItem?.mediaId != normalizedChannel) {
+            pendingChannelSelection = normalizedChannel
             switchChannelWithFade(normalizedChannel)
+        } else {
+            commitChannelSelection(normalizedChannel)
+            if (!playbackDesired) {
+                syncPlayerPlaylist(normalizedChannel, forceRebuild = true)
+            }
         }
     }
 
-    private fun selectChannelImmediately(
-        channel: String,
-    ) {
-        val normalizedChannel = normalizePersistedChannel(channel)
+    private fun prepareForChannelSelection() {
         cancelPendingReconnectJob()
         freshStreamOpenCoordinator.supersedeForSelection {
             freshStreamPlayerEffects.restoreNormalVolume()
         }
         channelSwitchJob?.cancel()
         channelSwitchJob = null
-        commitChannelSelection(normalizedChannel)
     }
 
     private fun openSessionSelection(channel: String): FreshStreamOpenResult {
-        return openFreshStream(
-            playWhenReadyAfterOpen = playbackDesired,
-            channelForOpen = channel,
-            onOpenSucceeded = { applySessionSelection(channel) },
+        return openAndCommitChannelSelection(
+            channel = channel,
+            openSelectedStream = { normalizedChannel, onOpened ->
+                openFreshStream(
+                    playWhenReadyAfterOpen = playbackDesired,
+                    channelForOpen = normalizedChannel,
+                    onOpenSucceeded = onOpened,
+                )
+            },
+            commitSelection = ::applySessionSelection,
         )
     }
 
@@ -356,7 +365,25 @@ class RadioPlaybackService : MediaLibraryService() {
         channelSwitchJob?.cancel()
         channelSwitchJob = null
         commitChannelSelection(normalizedChannel)
-        syncCurrentMediaItemMetadata()
+    }
+
+    private fun openExplicitChannelSelection(
+        channel: String,
+        restoreVolumeAfterOpen: Boolean,
+        playWhenReadyAfterOpen: Boolean,
+    ): FreshStreamOpenResult {
+        return openAndCommitChannelSelection(
+            channel = channel,
+            openSelectedStream = { normalizedChannel, onOpened ->
+                openFreshStream(
+                    restoreVolumeAfterOpen = restoreVolumeAfterOpen,
+                    playWhenReadyAfterOpen = playWhenReadyAfterOpen,
+                    channelForOpen = normalizedChannel,
+                    onOpenSucceeded = onOpened,
+                )
+            },
+            commitSelection = ::commitChannelSelection,
+        )
     }
 
     private fun commitChannelSelection(normalizedChannel: String) {
@@ -397,7 +424,8 @@ class RadioPlaybackService : MediaLibraryService() {
                 ) {
                     return@launch
                 }
-                openResult = openFreshStream(
+                openResult = openExplicitChannelSelection(
+                    channel = channel,
                     restoreVolumeAfterOpen = false,
                     playWhenReadyAfterOpen = playbackDesired,
                 )
@@ -415,6 +443,9 @@ class RadioPlaybackService : MediaLibraryService() {
                 pollCurrentOnce(channelOverride = _selectedChannel.value)
                 pollArtOnce(channelOverride = _selectedChannel.value)
             } finally {
+                if (pendingChannelSelection == channel) {
+                    pendingChannelSelection = null
+                }
                 freshStreamPlayerEffects.finishChannelSwitch(
                     coordinator = freshStreamOpenCoordinator,
                     switchGeneration = switchGeneration,
@@ -469,7 +500,11 @@ class RadioPlaybackService : MediaLibraryService() {
                 freshStreamPlayerInstaller.install(
                     replaceSource = {
                         _playbackState.value = RadioPlaybackState.Connecting
-                        syncPlayerPlaylist(channel, forceRebuild = lastPlaylistQuality != quality)
+                        syncPlayerPlaylist(
+                            channel,
+                            forceRebuild = lastPlaylistQuality != quality,
+                            refreshMetadata = false,
+                        )
                         if (player.playbackState == Player.STATE_ENDED) {
                             player.seekToDefaultPosition()
                         }
@@ -493,7 +528,10 @@ class RadioPlaybackService : MediaLibraryService() {
         } catch (_: RuntimeException) {
             FreshStreamOpenResult.Failed
         }
-        return completeFreshStreamOpen(result, onOpenSucceeded)
+        return completeFreshStreamOpen(result) {
+            onOpenSucceeded()
+            runCatching(::syncCurrentMediaItemMetadata)
+        }
     }
 
     private fun cancelPendingReconnectJob() {
@@ -588,6 +626,7 @@ class RadioPlaybackService : MediaLibraryService() {
     private fun syncPlayerPlaylist(
         selectedChannel: String,
         forceRebuild: Boolean = false,
+        refreshMetadata: Boolean = true,
     ) {
         val normalizedSelected = normalizePersistedChannel(selectedChannel)
         val availableChannels = ensureAllChannel(_channels.value + normalizedSelected)
@@ -612,7 +651,9 @@ class RadioPlaybackService : MediaLibraryService() {
             }
         }
 
-        syncCurrentMediaItemMetadata()
+        if (refreshMetadata) {
+            syncCurrentMediaItemMetadata()
+        }
     }
 
     private fun buildLibraryRootItem(): MediaItem {

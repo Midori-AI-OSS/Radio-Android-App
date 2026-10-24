@@ -167,6 +167,17 @@ internal fun completeFreshStreamOpen(
     return result
 }
 
+internal fun openAndCommitChannelSelection(
+    channel: String,
+    openSelectedStream: (channel: String, onOpened: () -> Unit) -> FreshStreamOpenResult,
+    commitSelection: (String) -> Unit,
+): FreshStreamOpenResult {
+    val normalizedChannel = normalizePersistedChannel(channel)
+    return openSelectedStream(normalizedChannel) {
+        commitSelection(normalizedChannel)
+    }
+}
+
 internal fun runFreshStreamOpenTransaction(
     coordinator: FreshStreamOpenCoordinator,
     cancelPendingReconnect: () -> Unit,

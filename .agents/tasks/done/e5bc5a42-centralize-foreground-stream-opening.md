@@ -1,6 +1,6 @@
 # [TASK] Centralize foreground stream opening and selection
 
-- Status: ready
+- Status: done
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
@@ -25,7 +25,7 @@ Make one service path responsible for admitting each foreground stream open/reop
 - [x] All foreground stream source replacements, including session-originated playback and recovery opens, converge on one canonical service-side opener.
 - [x] A stale callback/retry, or rapid channel/quality changes, cannot open an older selection over the current one; selection and effective quality are resolved at open admission using existing active/pending-quality semantics.
 - [x] At most one source-replacement/prepare transaction is admitted at a time. A newer explicit selection supersedes older pending work, and opening/retry work cannot race the channel fade into duplicate connections, incorrect selection, or incorrect volume restoration.
-- [ ] Behavior-focused tests demonstrate single-flight admission, latest effective channel/quality winning after rapid changes, stale callback/retry rejection, retry/fade overlap, pause/stop invalidation of delayed opening work, actual MediaSession/controller handling of exposed item mutations, and consistent state after post-admission exceptions.
+- [x] Behavior-focused tests demonstrate single-flight admission, latest effective channel/quality winning after rapid changes, stale callback/retry rejection, retry/fade overlap, pause/stop invalidation of delayed opening work, actual MediaSession/controller handling of exposed item mutations, and consistent state after post-admission exceptions.
 - [x] `./gradlew test` and `./gradlew :app:assembleDebug` pass.
 
 ## Audit findings (2026-10-24)
@@ -135,3 +135,12 @@ Make one service path responsible for admitting each foreground stream open/reop
 
 - Remains WIP: `setChannel()` calls `selectChannelImmediately()` before `switchChannelWithFade()` admits its open. This commits `_selectedChannel` and schedules persistence/art effects before the source transaction. `syncPlayerPlaylist()` calls `syncCurrentMediaItemMetadata()` inside `FreshStreamPlayerInstaller.install`; if metadata replacement throws, the installer restores the prior player item, while the open failure handler restores quality, playlist, and playback state but not the channel selection or its side effects. Defer or fully roll back explicit selection effects with the source-install transaction, and add a failure test asserting that the player source and selected/persisted channel remain aligned.
 - `MediaSessionMutationIntegrationTest` uses a test-only `MediaLibrarySession` service/callback around `MediaSessionStreamOpening`, not `RadioPlaybackService.SessionCallback`. Its adjacent-channel checks count dispatches rather than verify the resulting production selection. Add production-boundary coverage for actual adjacent selection and explicit-switch metadata failure; retain the existing blocked-move and controller-prepare checks.
+
+## Final closure (2026-10-24)
+
+- Explicit and session selections now share `openAndCommitChannelSelection`; selection persistence/art effects commit only after admitted source installation and preparation succeed.
+- Stream-install transactions skip metadata replacement. Metadata refresh runs after selection commit and is best-effort, so a refresh failure cannot restore the previous source or leave selection and source misaligned.
+- Rapid adjacent selections resolve from the pending explicit target, while same-channel foreground selection no longer replaces a live source outside canonical admission.
+- Behavioral tests cover successful and failed selection admission, including selected channel, persisted channel, installed source, pending retry cancellation, and metadata-refresh failure after installation.
+- `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew test --rerun-tasks --console=plain`: passed (24 tasks executed).
+- `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew :app:assembleDebug --rerun-tasks --console=plain`: passed (36 tasks executed).

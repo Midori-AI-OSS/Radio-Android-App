@@ -375,26 +375,126 @@ class FreshStreamOpenCoordinatorTest {
         )
         val player = installationPlayer(state)
         var selectedChannel = "all"
+        var metadataRefreshes = 0
 
-        FreshStreamPlayerInstaller(player).install(
-            replaceSource = {
-                player.setMediaItem(MediaItem.Builder().setMediaId("focus").build())
+        val result = openAndCommitChannelSelection(
+            channel = "focus",
+            openSelectedStream = { channel, onOpened ->
+                FreshStreamPlayerInstaller(player).install(
+                    replaceSource = {
+                        player.setMediaItem(MediaItem.Builder().setMediaId(channel).build())
+                    },
+                    playWhenReady = true,
+                    onFailed = {},
+                )
+                completeFreshStreamOpen(FreshStreamOpenResult.Opened) {
+                    onOpened()
+                    runCatching {
+                        metadataRefreshes += 1
+                        error("metadata refresh failed")
+                    }
+                }
             },
-            playWhenReady = true,
-            onFailed = {},
+            commitSelection = { selectedChannel = it },
         )
 
-        assertThrows(IllegalStateException::class.java) {
-            completeFreshStreamOpen(FreshStreamOpenResult.Opened) {
-                selectedChannel = "focus"
-                error("metadata refresh failed")
-            }
-        }
-
+        assertEquals(FreshStreamOpenResult.Opened, result)
         assertEquals("focus", selectedChannel)
         assertEquals("focus", state.mediaItem?.mediaId)
         assertTrue(state.playWhenReady)
         assertEquals(1, state.prepareCalls)
+        assertEquals(1, metadataRefreshes)
+    }
+
+    @Test
+    fun explicitSelectionAdmission_commitsSelectionSourceAndRetryOnlyAfterSuccessfulInstall() {
+        val state = InstallationPlayerState(
+            mediaItem = MediaItem.Builder().setMediaId("all").build(),
+            playWhenReady = true,
+            playbackState = Player.STATE_READY,
+        )
+        val player = installationPlayer(state)
+        val coordinator = FreshStreamOpenCoordinator()
+        var selectedChannel = "all"
+        var persistedChannel = "all"
+        var pendingRetry = true
+
+        val result = openAndCommitChannelSelection(
+            channel = "focus",
+            openSelectedStream = { channel, onOpened ->
+                val openResult = runCatching {
+                    runFreshStreamOpenTransaction(
+                        coordinator = coordinator,
+                        cancelPendingReconnect = { pendingRetry = false },
+                    ) {
+                        FreshStreamPlayerInstaller(player).install(
+                            replaceSource = {
+                                player.setMediaItem(MediaItem.Builder().setMediaId(channel).build())
+                            },
+                            playWhenReady = true,
+                            onFailed = {},
+                        )
+                    }
+                }.getOrElse { FreshStreamOpenResult.Failed }
+                completeFreshStreamOpen(openResult, onOpened)
+            },
+            commitSelection = {
+                selectedChannel = it
+                persistedChannel = it
+            },
+        )
+
+        assertEquals(FreshStreamOpenResult.Opened, result)
+        assertEquals("focus", selectedChannel)
+        assertEquals("focus", persistedChannel)
+        assertEquals("focus", state.mediaItem?.mediaId)
+        assertFalse(pendingRetry)
+    }
+
+    @Test
+    fun explicitSelectionAdmission_failedInstallKeepsSelectionAndSourceAligned() {
+        val state = InstallationPlayerState(
+            mediaItem = MediaItem.Builder().setMediaId("all").build(),
+            playWhenReady = true,
+            playbackState = Player.STATE_READY,
+            failNextSetAfterMutation = true,
+        )
+        val player = installationPlayer(state)
+        val coordinator = FreshStreamOpenCoordinator()
+        var selectedChannel = "all"
+        var persistedChannel = "all"
+        var pendingRetry = true
+
+        val result = openAndCommitChannelSelection(
+            channel = "focus",
+            openSelectedStream = { channel, onOpened ->
+                val openResult = runCatching {
+                    runFreshStreamOpenTransaction(
+                        coordinator = coordinator,
+                        cancelPendingReconnect = { pendingRetry = false },
+                    ) {
+                        FreshStreamPlayerInstaller(player).install(
+                            replaceSource = {
+                                player.setMediaItem(MediaItem.Builder().setMediaId(channel).build())
+                            },
+                            playWhenReady = true,
+                            onFailed = {},
+                        )
+                    }
+                }.getOrElse { FreshStreamOpenResult.Failed }
+                completeFreshStreamOpen(openResult, onOpened)
+            },
+            commitSelection = {
+                selectedChannel = it
+                persistedChannel = it
+            },
+        )
+
+        assertEquals(FreshStreamOpenResult.Failed, result)
+        assertEquals("all", selectedChannel)
+        assertEquals("all", persistedChannel)
+        assertEquals("all", state.mediaItem?.mediaId)
+        assertFalse(pendingRetry)
     }
 
     @Test
