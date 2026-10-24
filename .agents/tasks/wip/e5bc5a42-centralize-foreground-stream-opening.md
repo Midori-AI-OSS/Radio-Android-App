@@ -1,6 +1,6 @@
 # [TASK] Centralize foreground stream opening and selection
 
-- Status: done
+- Status: wip
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
@@ -22,10 +22,10 @@ Make one service path responsible for admitting each foreground stream open/reop
 
 ## Acceptance criteria
 
-- [x] All foreground stream source replacements, including session-originated playback and recovery opens, converge on one canonical service-side opener.
+- [ ] All foreground stream source replacements, including session-originated playback and recovery opens, converge on one canonical service-side opener.
 - [x] A stale callback/retry, or rapid channel/quality changes, cannot open an older selection over the current one; selection and effective quality are resolved at open admission using existing active/pending-quality semantics.
 - [x] At most one source-replacement/prepare transaction is admitted at a time. A newer explicit selection supersedes older pending work, and opening/retry work cannot race the channel fade into duplicate connections, incorrect selection, or incorrect volume restoration.
-- [x] Behavior-focused tests demonstrate single-flight admission, latest effective channel/quality winning after rapid changes, stale callback/retry rejection, retry/fade overlap, and pause/stop invalidation of delayed opening work.
+- [ ] Behavior-focused tests demonstrate single-flight admission, latest effective channel/quality winning after rapid changes, stale callback/retry rejection, retry/fade overlap, pause/stop invalidation of delayed opening work, actual MediaSession/controller handling of exposed item mutations, and consistent state after post-admission exceptions.
 - [x] `./gradlew test` and `./gradlew :app:assembleDebug` pass.
 
 ## Audit findings (2026-10-24)
@@ -103,3 +103,8 @@ Make one service path responsible for admitting each foreground stream open/reop
 - Added focused executable coverage across the session-opening collaborator and forwarding player for ordinary and paired prepare, unapplied results, admission rejection, resolution/open exceptions, fallback item installation, source preparation, and volume effects without adding a new test framework.
 - `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew test --console=plain`: passed.
 - `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew :app:assembleDebug --console=plain`: passed.
+
+## Re-audit (2026-10-24)
+
+- Remains WIP: `SessionCallback.onConnect()` exposes `DEFAULT_PLAYER_COMMANDS`, but `RadioSessionPlayer` intercepts only `setMediaItem(s)`. Playlist mutations (`add`, `replace`, `remove`, `clear`) can reach ExoPlayer directly and bypass canonical open admission. Restrict those commands or route exposed mutations through the canonical opener, and cover the behavior with an actual MediaSession/controller integration test.
+- Add post-admission exception coverage verifying selection/playback state and player effects remain consistent when admitted installation or preparation throws.
