@@ -1,6 +1,6 @@
 # [TASK] Centralize foreground stream opening and selection
 
-- Status: ready
+- Status: needs-fixes
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
@@ -27,3 +27,11 @@ Make one service path responsible for admitting each foreground stream open/reop
 - [ ] At most one source-replacement/prepare transaction is admitted at a time. A newer explicit selection supersedes older pending work, and opening/retry work cannot race the channel fade into duplicate connections, incorrect selection, or incorrect volume restoration.
 - [ ] Behavior-focused tests demonstrate single-flight admission, latest effective channel/quality winning after rapid changes, stale callback/retry rejection, retry/fade overlap, and pause/stop invalidation of delayed opening work.
 - [ ] `./gradlew test` and `./gradlew :app:assembleDebug` pass.
+
+## Audit findings (2026-10-24)
+
+- `SessionCallback.onSetMediaItems()` returns a selected item list for MediaSession to install, while `selectChannelImmediately()` starts `switchChannelWithFade()`, which later calls `openFreshStream()` and installs/prepares again. Coordinate these paths so session-originated selection admits one source replacement through the canonical opener while preserving the callback return contract.
+- `openFreshStream()` does not own volume restoration; it was removed from the shared open path and is now split across `play()`, `markPlaybackRecovered()`, `pausePlayback()`, and the switch-fade continuation. Give each open/fade transaction one guaranteed volume-restoration owner, including interrupted/superseded recovery paths, and test it.
+- `FreshStreamOpenCoordinatorTest` covers coordinator predicates and selection resolution, but not the MediaSession/switch integration, rapid channel/quality changes, or volume restoration. Add behavior-focused coverage for those paths and stale callback/retry rejection.
+- `./gradlew test`: BLOCKED — SDK location not found (`ANDROID_HOME` or `local.properties` `sdk.dir` is not configured).
+- `./gradlew :app:assembleDebug`: BLOCKED — same SDK-location error. Docker verification was unavailable because access to `/var/run/docker.sock` was denied. A copied-tree “42 tasks up-to-date” result is not fresh verification of this checkout.
