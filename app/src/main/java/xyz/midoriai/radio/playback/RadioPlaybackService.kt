@@ -49,7 +49,6 @@ import xyz.midoriai.radio.ui.screens.nowplaying.RadioPlaybackState
 
 @UnstableApi
 class RadioPlaybackService : MediaLibraryService() {
-    private val reconnectDelaysMs: List<Long> = listOf(50L, 100L, 200L, 400L, 800L, 1500L)
     private val playingMetadataPollIntervalMs = 5000L
     private val idleMetadataPollIntervalMs = 20000L
     private val channelRefreshIntervalMs = 60000L
@@ -493,7 +492,7 @@ class RadioPlaybackService : MediaLibraryService() {
                 if (isDebugBuild) {
                     Log.d(
                         "MidoriAIRadio",
-                        "Radio endpoints: stream=$streamUrl current=/radio/v1/current art=/radio/v1/art artImage=/radio/v1/art/image health=/health reconnectDelaysMs=$reconnectDelaysMs openGeneration=$openGeneration",
+                        "Radio endpoints: stream=$streamUrl current=/radio/v1/current art=/radio/v1/art artImage=/radio/v1/art/image health=/health reconnectDelaysMs=$errorReconnectDelaysMs openGeneration=$openGeneration",
                     )
                 }
 
@@ -546,34 +545,24 @@ class RadioPlaybackService : MediaLibraryService() {
 
     private fun isChannelSwitchInProgress(): Boolean = channelSwitchJob?.isActive == true
 
-    private fun isPlaybackHealthyForReconnect(): Boolean {
-        return isHealthyPlayback(
-            playbackState = player.playbackState,
-            playWhenReady = player.playWhenReady,
-            isPlaying = player.isPlaying,
-        )
-    }
-
     private fun markPlaybackRecovered() {
         clearReconnectState()
         _playbackState.value = RadioPlaybackState.Playing
     }
 
-    private fun queueReconnect(@Suppress("UNUSED_PARAMETER") reason: String) {
+    private fun queueErrorReconnect() {
         if (!playbackDesired) {
             return
         }
 
-        if (isPlaybackHealthyForReconnect()) {
-            markPlaybackRecovered()
+        if (reconnectJob?.isActive == true) {
             return
         }
 
         cancelPendingReconnectJob()
 
         reconnectAttempt += 1
-        val delayIndex = (reconnectAttempt - 1).coerceAtMost(reconnectDelaysMs.lastIndex)
-        val delayMs = reconnectDelaysMs[delayIndex]
+        val delayMs = errorReconnectDelayMs(reconnectAttempt)
         val capturedGeneration = freshStreamOpenCoordinator.currentGeneration()
 
         _playbackState.value = RadioPlaybackState.Reconnecting(reconnectAttempt, delayMs)
@@ -597,8 +586,29 @@ class RadioPlaybackService : MediaLibraryService() {
                 return@launch
             }
 
+            reconnectJob = null
             openFreshStream()
         }
+    }
+
+    private fun continueAfterEndOfStream() {
+        val capturedGeneration = freshStreamOpenCoordinator.currentGeneration()
+        if (
+            !shouldContinueEndOfStreamRecovery(
+                playbackDesired = playbackDesired,
+                playbackState = player.playbackState,
+                queuedGeneration = capturedGeneration,
+                currentGeneration = freshStreamOpenCoordinator.currentGeneration(),
+            ) || !freshStreamOpenCoordinator.canRunDelayedOpen(
+                queuedGeneration = capturedGeneration,
+                playbackDesired = playbackDesired,
+                channelSwitchInProgress = isChannelSwitchInProgress(),
+            )
+        ) {
+            return
+        }
+
+        openFreshStream()
     }
 
     private fun commitQualityForOpen(quality: String): String {
@@ -1141,9 +1151,8 @@ class RadioPlaybackService : MediaLibraryService() {
         return listOf("all") + normalized
     }
 
-    private fun handlePlayerError(error: PlaybackException) {
-        val message = error.message?.trim().orEmpty()
-        queueReconnect(if (message.isNotEmpty()) message else "Playback error")
+    private fun handlePlayerError(@Suppress("UNUSED_PARAMETER") error: PlaybackException) {
+        queueErrorReconnect()
     }
 
     private fun floorMod(value: Int, modulus: Int): Int {
@@ -1311,7 +1320,7 @@ class RadioPlaybackService : MediaLibraryService() {
             }
 
             if (playbackState == Player.STATE_ENDED) {
-                queueReconnect("Stream ended")
+                continueAfterEndOfStream()
             }
         }
 
