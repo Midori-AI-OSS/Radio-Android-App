@@ -100,6 +100,18 @@ internal enum class FreshStreamOpenResult {
     Rejected,
 }
 
+internal fun runFreshStreamOpenTransaction(
+    coordinator: FreshStreamOpenCoordinator,
+    cancelPendingReconnect: () -> Unit,
+    onFinished: () -> Unit = {},
+    transaction: (openGeneration: Long) -> Unit,
+): FreshStreamOpenResult {
+    return coordinator.runOpenTransaction(onFinished = onFinished) { openGeneration ->
+        cancelPendingReconnect()
+        transaction(openGeneration)
+    }
+}
+
 internal fun shouldContinueChannelSwitch(
     openResult: FreshStreamOpenResult,
     isCurrentSwitch: Boolean,

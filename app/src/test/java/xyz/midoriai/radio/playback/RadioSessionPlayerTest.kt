@@ -121,6 +121,47 @@ class RadioSessionPlayerTest {
     }
 
     @Test
+    fun everyMediaSessionItemInstallationOverload_routesToCanonicalOpen() {
+        var delegatedSetCalls = 0
+        var delegatedPrepareCalls = 0
+        var canonicalOpenCalls = 0
+        val item = MediaItem.Builder().setMediaId("focus").build()
+        val items = listOf(item)
+        val sessionPlayer = RadioSessionPlayer(
+            player = fakePlayer(
+                currentMediaItem = null,
+                onSetMediaItems = { delegatedSetCalls += 1 },
+                onPrepare = { delegatedPrepareCalls += 1 },
+            ),
+            onPlay = {},
+            onPause = {},
+            onSelectAdjacentChannel = {},
+            onSetMediaItems = { canonicalOpenCalls += 1 },
+        )
+
+        sessionPlayer.setMediaItem(item)
+        sessionPlayer.prepare()
+        sessionPlayer.setMediaItem(item, true)
+        sessionPlayer.prepare()
+        sessionPlayer.setMediaItem(item, 120L)
+        sessionPlayer.prepare()
+        sessionPlayer.setMediaItems(items)
+        sessionPlayer.prepare()
+        sessionPlayer.setMediaItems(items, true)
+        sessionPlayer.prepare()
+        sessionPlayer.setMediaItems(items, 0, C.TIME_UNSET)
+        sessionPlayer.prepare()
+
+        assertEquals(6, canonicalOpenCalls)
+        assertEquals(0, delegatedSetCalls)
+        assertEquals(0, delegatedPrepareCalls)
+
+        sessionPlayer.prepare()
+
+        assertEquals(1, delegatedPrepareCalls)
+    }
+
+    @Test
     fun mediaSessionSelection_returnedItemsInstallOnceThroughCanonicalServiceOpen() {
         val events = mutableListOf<String>()
         var delegatedSetCalls = 0
@@ -165,18 +206,73 @@ class RadioSessionPlayerTest {
         assertEquals(0, delegatedPrepareCalls)
     }
 
+    @Test
+    fun mediaSessionFallbackSetMediaItem_installsAndPreparesCanonicalServiceSource() {
+        val playerState = FakePlayerState(volume = 0f)
+        var selectedChannel = "all"
+        val underlyingPlayer = fakePlayer(
+            currentMediaItem = null,
+            state = playerState,
+        )
+        val streamOpening = MediaSessionStreamOpening(
+            resolveRequestedChannel = { items -> items.first().mediaId },
+            effectiveQualityForNextOpen = { "high" },
+            buildPlaybackItems = { channel, _ ->
+                listOf(MediaItem.Builder().setMediaId(channel).build())
+            },
+            selectChannelImmediately = { channel -> selectedChannel = channel },
+            openSelectedStream = {
+                underlyingPlayer.setMediaItem(
+                    MediaItem.Builder().setMediaId("canonical:$selectedChannel").build(),
+                )
+                underlyingPlayer.volume = 1f
+                underlyingPlayer.prepare()
+            },
+        )
+        val sessionPlayer = streamOpening.wrapPlayer(
+            player = underlyingPlayer,
+            onPlay = {},
+            onPause = {},
+            onSelectAdjacentChannel = {},
+        )
+        val returnedItem = streamOpening.resolvePlaybackItems(
+            listOf(MediaItem.Builder().setMediaId("focus").build()),
+        ).single()
+
+        sessionPlayer.setMediaItem(returnedItem, true)
+        sessionPlayer.prepare()
+
+        assertEquals("canonical:focus", playerState.currentMediaItem?.mediaId)
+        assertEquals(1f, playerState.volume)
+        assertEquals(1, playerState.setMediaItemCalls)
+        assertEquals(1, playerState.prepareCalls)
+    }
+
+    private data class FakePlayerState(
+        var currentMediaItem: MediaItem? = null,
+        var volume: Float = 1f,
+        var setMediaItemCalls: Int = 0,
+        var prepareCalls: Int = 0,
+    )
+
     private fun fakePlayer(
         duration: Long = 0L,
         contentDuration: Long = 0L,
         currentMediaItem: MediaItem? = null,
         onSetMediaItems: () -> Unit = {},
         onPrepare: () -> Unit = {},
+        state: FakePlayerState? = null,
     ): Player {
         val handler = InvocationHandler { _, method, args ->
             when (method.name) {
                 "getDuration" -> duration
                 "getContentDuration" -> contentDuration
-                "getCurrentMediaItem" -> currentMediaItem
+                "getCurrentMediaItem" -> state?.currentMediaItem ?: currentMediaItem
+                "getVolume" -> state?.volume ?: 1f
+                "setVolume" -> {
+                    state?.volume = args?.firstOrNull() as Float
+                    null
+                }
                 "isCurrentMediaItemLive" -> false
                 "isCurrentMediaItemSeekable" -> true
                 "addListener", "removeListener", "release" -> null
@@ -185,8 +281,18 @@ class RadioSessionPlayerTest {
                 "getPlaybackState" -> Player.STATE_IDLE
                 "getRepeatMode" -> Player.REPEAT_MODE_OFF
                 "getCurrentTimeline" -> androidx.media3.common.Timeline.EMPTY
+                "setMediaItem" -> {
+                    state?.let {
+                        it.currentMediaItem = args?.firstOrNull() as MediaItem
+                        it.setMediaItemCalls += 1
+                    }
+                    onSetMediaItems()
+                }
                 "setMediaItems" -> onSetMediaItems()
-                "prepare" -> onPrepare()
+                "prepare" -> {
+                    state?.let { it.prepareCalls += 1 }
+                    onPrepare()
+                }
                 "hashCode" -> System.identityHashCode(method)
                 "equals" -> args?.firstOrNull() === this
                 "toString" -> "FakePlayer"

@@ -163,6 +163,35 @@ class FreshStreamOpenCoordinatorTest {
     }
 
     @Test
+    fun serviceOpen_rejectionPreservesPendingReconnectUntilAnOpenIsAdmitted() {
+        val coordinator = FreshStreamOpenCoordinator()
+        var pendingReconnect = true
+        var rejectedResult: FreshStreamOpenResult? = null
+
+        runFreshStreamOpenTransaction(
+            coordinator = coordinator,
+            cancelPendingReconnect = { pendingReconnect = false },
+        ) {
+            pendingReconnect = true
+            rejectedResult = runFreshStreamOpenTransaction(
+                coordinator = coordinator,
+                cancelPendingReconnect = { pendingReconnect = false },
+            ) { error("rejected open must not run") }
+            assertTrue(pendingReconnect)
+        }
+
+        assertEquals(FreshStreamOpenResult.Rejected, rejectedResult)
+        assertTrue(pendingReconnect)
+
+        runFreshStreamOpenTransaction(
+            coordinator = coordinator,
+            cancelPendingReconnect = { pendingReconnect = false },
+        ) {}
+
+        assertFalse(pendingReconnect)
+    }
+
+    @Test
     fun selectionSupersession_invalidatesRetryAndRestoresVolume() {
         val coordinator = FreshStreamOpenCoordinator()
         val queuedRetry = coordinator.currentGeneration()

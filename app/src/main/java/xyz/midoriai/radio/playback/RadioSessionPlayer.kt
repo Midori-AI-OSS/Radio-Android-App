@@ -12,6 +12,8 @@ internal class RadioSessionPlayer(
     private val onSelectAdjacentChannel: (Int) -> Unit,
     private val onSetMediaItems: () -> Unit,
 ) : ForwardingPlayer(player) {
+    private var canonicalPreparePending = false
+
     override fun play() {
         onPlay()
     }
@@ -53,11 +55,46 @@ internal class RadioSessionPlayer(
         startIndex: Int,
         startPositionMs: Long,
     ) {
-        onSetMediaItems()
+        openCanonicalSource()
+    }
+
+    override fun setMediaItems(mediaItems: List<MediaItem>) {
+        openCanonicalSource()
+    }
+
+    override fun setMediaItems(mediaItems: List<MediaItem>, resetPosition: Boolean) {
+        openCanonicalSource()
+    }
+
+    override fun setMediaItem(mediaItem: MediaItem) {
+        openCanonicalSource()
+    }
+
+    override fun setMediaItem(mediaItem: MediaItem, startPositionMs: Long) {
+        openCanonicalSource()
+    }
+
+    override fun setMediaItem(mediaItem: MediaItem, resetPosition: Boolean) {
+        openCanonicalSource()
     }
 
     override fun prepare() {
-        // The set-media-items callback has already installed and prepared the canonical source.
+        if (canonicalPreparePending) {
+            canonicalPreparePending = false
+            return
+        }
+
+        super.prepare()
+    }
+
+    private fun openCanonicalSource() {
+        canonicalPreparePending = true
+        try {
+            onSetMediaItems()
+        } catch (failure: Throwable) {
+            canonicalPreparePending = false
+            throw failure
+        }
     }
 
     override fun getDuration(): Long = C.TIME_UNSET

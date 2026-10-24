@@ -1,6 +1,6 @@
 # [TASK] Centralize foreground stream opening and selection
 
-- Status: wip
+- Status: done
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
@@ -22,10 +22,10 @@ Make one service path responsible for admitting each foreground stream open/reop
 
 ## Acceptance criteria
 
-- [ ] All foreground stream source replacements, including session-originated playback and recovery opens, converge on one canonical service-side opener.
+- [x] All foreground stream source replacements, including session-originated playback and recovery opens, converge on one canonical service-side opener.
 - [x] A stale callback/retry, or rapid channel/quality changes, cannot open an older selection over the current one; selection and effective quality are resolved at open admission using existing active/pending-quality semantics.
 - [x] At most one source-replacement/prepare transaction is admitted at a time. A newer explicit selection supersedes older pending work, and opening/retry work cannot race the channel fade into duplicate connections, incorrect selection, or incorrect volume restoration.
-- [ ] Behavior-focused tests demonstrate single-flight admission, latest effective channel/quality winning after rapid changes, stale callback/retry rejection, retry/fade overlap, and pause/stop invalidation of delayed opening work.
+- [x] Behavior-focused tests demonstrate single-flight admission, latest effective channel/quality winning after rapid changes, stale callback/retry rejection, retry/fade overlap, and pause/stop invalidation of delayed opening work.
 - [x] `./gradlew test` and `./gradlew :app:assembleDebug` pass.
 
 ## Audit findings (2026-10-24)
@@ -81,3 +81,11 @@ Make one service path responsible for admitting each foreground stream open/reop
 - Remains WIP: Media3 1.11.0's session fallback applies the callback result with `setMediaItem(...)` when `COMMAND_CHANGE_MEDIA_ITEMS` is unavailable. `RadioSessionPlayer` intercepts only `setMediaItems(List, int, long)`; inherited item-setting overloads delegate directly, while `prepare()` is always a no-op. Route fallback installation and preparation through the canonical opener, and add service/session-level coverage for fallback plus actual player source/volume effects.
 - `openFreshStream()` cancels the pending reconnect before attempting coordinator admission, so a rejected open can discard a retry. Preserve the retry when admission is rejected and cover this case behaviorally.
 - The Gradle test and assemble commands above passed on this checkout; Gradle reported tasks up-to-date.
+
+## Completion (2026-10-24)
+
+- All six Media3 `setMediaItem`/`setMediaItems` overloads now invoke the canonical service opening callback. The wrapper suppresses only the prepare paired with an intercepted installation and delegates an ordinary later `prepare()` to the player.
+- Pending reconnect cancellation now occurs only after fresh-open admission, so a rejected open leaves a valid queued retry intact.
+- Added executable wrapper/service-facing tests for every installation overload, fallback `setMediaItem(...)`, canonical source preparation and volume restoration, ordinary prepare delegation, and rejected-open retry preservation.
+- `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew test --console=plain`: passed.
+- `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew :app:assembleDebug --console=plain`: passed.

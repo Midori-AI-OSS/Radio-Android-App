@@ -414,8 +414,9 @@ class RadioPlaybackService : MediaLibraryService() {
         restoreVolumeAfterOpen: Boolean = true,
         playWhenReadyAfterOpen: Boolean = true,
     ): FreshStreamOpenResult {
-        cancelPendingReconnectJob()
-        return freshStreamOpenCoordinator.runOpenTransaction(
+        return runFreshStreamOpenTransaction(
+            coordinator = freshStreamOpenCoordinator,
+            cancelPendingReconnect = ::cancelPendingReconnectJob,
             onFinished = {
                 if (restoreVolumeAfterOpen) {
                     freshStreamPlayerEffects.restoreNormalVolume()
