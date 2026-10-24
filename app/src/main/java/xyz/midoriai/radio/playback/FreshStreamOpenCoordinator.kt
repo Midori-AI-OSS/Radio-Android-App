@@ -99,6 +99,13 @@ internal class FreshStreamOpenCoordinator {
             !channelSwitchInProgress &&
             queuedGeneration == generation
     }
+
+    fun canRunTerminalOpen(
+        playbackDesired: Boolean,
+        channelSwitchInProgress: Boolean,
+    ): Boolean {
+        return playbackDesired && !opening && !channelSwitchInProgress
+    }
 }
 
 internal enum class FreshStreamOpenResult {

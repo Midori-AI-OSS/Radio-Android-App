@@ -86,6 +86,34 @@ class FreshStreamOpenCoordinatorTest {
     }
 
     @Test
+    fun canRunTerminalOpen_checksCurrentOpeningStateInsteadOfAQueuedGeneration() {
+        val coordinator = FreshStreamOpenCoordinator()
+        coordinator.invalidatePendingWork()
+
+        assertTrue(
+            coordinator.canRunTerminalOpen(
+                playbackDesired = true,
+                channelSwitchInProgress = false,
+            ),
+        )
+
+        coordinator.tryBeginOpen()
+        assertFalse(
+            coordinator.canRunTerminalOpen(
+                playbackDesired = true,
+                channelSwitchInProgress = false,
+            ),
+        )
+        coordinator.finishOpen()
+        assertFalse(
+            coordinator.canRunTerminalOpen(
+                playbackDesired = true,
+                channelSwitchInProgress = true,
+            ),
+        )
+    }
+
+    @Test
     fun resolveFreshStreamSelection_usesLatestChannelAndPendingQualityAtAdmission() {
         assertEquals(
             FreshStreamSelection(channel = "focus", quality = "high"),

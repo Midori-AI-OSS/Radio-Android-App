@@ -12,10 +12,40 @@ internal fun errorReconnectDelayMs(attempt: Int): Long {
 internal fun shouldContinueEndOfStreamRecovery(
     playbackDesired: Boolean,
     playbackState: Int,
-    queuedGeneration: Long,
-    currentGeneration: Long,
+    sourceIsCurrent: Boolean,
 ): Boolean {
     return playbackDesired &&
         playbackState == Player.STATE_ENDED &&
-        queuedGeneration == currentGeneration
+        sourceIsCurrent
+}
+
+internal fun shouldRestoreHealthyPlaybackAfterError(
+    playbackState: Int,
+    playWhenReady: Boolean,
+    isPlaying: Boolean,
+): Boolean = isHealthyPlayback(playbackState, playWhenReady, isPlaying)
+
+internal fun shouldRetryFailedRecoveryOpen(result: FreshStreamOpenResult): Boolean {
+    return result == FreshStreamOpenResult.Failed
+}
+
+/** Coalesces repeated terminal callbacks for the same installed player source. */
+internal class TerminalOpenCoalescer {
+    private var pendingSourceGeneration: Long? = null
+
+    fun tryBegin(sourceGeneration: Long): Boolean {
+        if (pendingSourceGeneration == sourceGeneration) {
+            return false
+        }
+        pendingSourceGeneration = sourceGeneration
+        return true
+    }
+
+    fun sourceOpened() {
+        pendingSourceGeneration = null
+    }
+
+    fun cancel() {
+        pendingSourceGeneration = null
+    }
 }
