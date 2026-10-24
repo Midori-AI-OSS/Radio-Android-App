@@ -1,5 +1,7 @@
 package xyz.midoriai.radio.playback
 
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import xyz.midoriai.radio.radioapi.normalizeQuality
 
 /** Coordinates short-lived player source replacement transactions. */
@@ -45,7 +47,11 @@ internal class FreshStreamOpenCoordinator {
     ) {
         if (isCurrentChannelSwitch(queuedGeneration)) {
             restoreVolume()
-            if (openResult == FreshStreamOpenResult.Rejected && playbackDesired) {
+            if (
+                openResult != null &&
+                openResult != FreshStreamOpenResult.Opened &&
+                playbackDesired
+            ) {
                 onRejectedOpen()
             }
         }
@@ -98,6 +104,59 @@ internal class FreshStreamOpenCoordinator {
 internal enum class FreshStreamOpenResult {
     Opened,
     Rejected,
+    Failed,
+}
+
+/** Restores the previous player source if an admitted installation does not complete. */
+internal class FreshStreamPlayerInstaller(
+    private val player: Player,
+) {
+    fun install(
+        replaceSource: () -> Unit,
+        playWhenReady: Boolean,
+        onSucceeded: () -> Unit,
+        onFailed: () -> Unit,
+    ) {
+        val snapshot = Snapshot(
+            mediaItem = player.currentMediaItem,
+            playWhenReady = player.playWhenReady,
+            wasPrepared = player.playbackState != Player.STATE_IDLE,
+        )
+
+        try {
+            replaceSource()
+            player.prepare()
+            player.playWhenReady = playWhenReady
+            onSucceeded()
+        } catch (failure: Throwable) {
+            runCatching { restore(snapshot) }
+                .exceptionOrNull()
+                ?.let(failure::addSuppressed)
+            runCatching(onFailed)
+                .exceptionOrNull()
+                ?.let(failure::addSuppressed)
+            throw failure
+        }
+    }
+
+    private fun restore(snapshot: Snapshot) {
+        val previousItem = snapshot.mediaItem
+        if (previousItem == null) {
+            player.clearMediaItems()
+        } else {
+            player.setMediaItem(previousItem)
+            if (snapshot.wasPrepared) {
+                player.prepare()
+            }
+        }
+        player.playWhenReady = snapshot.playWhenReady
+    }
+
+    private data class Snapshot(
+        val mediaItem: MediaItem?,
+        val playWhenReady: Boolean,
+        val wasPrepared: Boolean,
+    )
 }
 
 internal fun runFreshStreamOpenTransaction(

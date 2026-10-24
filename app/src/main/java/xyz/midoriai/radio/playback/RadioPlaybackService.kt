@@ -113,6 +113,8 @@ class RadioPlaybackService : MediaLibraryService() {
         )
     }
 
+    private val freshStreamPlayerInstaller by lazy { FreshStreamPlayerInstaller(player) }
+
     private var mediaSession: MediaLibrarySession? = null
 
     private val _playbackState = MutableStateFlow<RadioPlaybackState>(RadioPlaybackState.Idle)
@@ -433,44 +435,68 @@ class RadioPlaybackService : MediaLibraryService() {
         channelForOpen: String? = null,
         onOpenSucceeded: () -> Unit = {},
     ): FreshStreamOpenResult {
-        return runFreshStreamOpenTransaction(
-            coordinator = freshStreamOpenCoordinator,
-            cancelPendingReconnect = ::cancelPendingReconnectJob,
-            onFinished = {
-                if (restoreVolumeAfterOpen) {
-                    freshStreamPlayerEffects.restoreNormalVolume()
-                }
-            },
-        ) { openGeneration ->
-            val selection = resolveFreshStreamSelection(
-                selectedChannel = channelForOpen ?: _selectedChannel.value,
-                activeQuality = _activeQuality.value,
-                pendingQuality = _pendingQuality.value,
-            )
-            val channel = selection.channel
-            val quality = commitQualityForOpen(selection.quality)
-            val streamUrl = buildStreamUrl(
-                baseUrl = RadioApiDefaults.DEFAULT_BASE_URL,
-                channel = channel,
-                quality = quality,
-            )
+        return try {
+            runFreshStreamOpenTransaction(
+                coordinator = freshStreamOpenCoordinator,
+                cancelPendingReconnect = ::cancelPendingReconnectJob,
+                onFinished = {
+                    if (restoreVolumeAfterOpen) {
+                        freshStreamPlayerEffects.restoreNormalVolume()
+                    }
+                },
+            ) { openGeneration ->
+                val previousPlaybackState = _playbackState.value
+                val previousActiveQuality = _activeQuality.value
+                val previousPendingQuality = _pendingQuality.value
+                val previousPlaylistChannel = lastPlaylistChannel
+                val previousPlaylistQuality = lastPlaylistQuality
+                val selection = resolveFreshStreamSelection(
+                    selectedChannel = channelForOpen ?: _selectedChannel.value,
+                    activeQuality = _activeQuality.value,
+                    pendingQuality = _pendingQuality.value,
+                )
+                val channel = selection.channel
+                val quality = commitQualityForOpen(selection.quality)
+                val streamUrl = buildStreamUrl(
+                    baseUrl = RadioApiDefaults.DEFAULT_BASE_URL,
+                    channel = channel,
+                    quality = quality,
+                )
 
-            if (isDebugBuild) {
-                Log.d(
-                    "MidoriAIRadio",
-                    "Radio endpoints: stream=$streamUrl current=/radio/v1/current art=/radio/v1/art artImage=/radio/v1/art/image health=/health reconnectDelaysMs=$reconnectDelaysMs openGeneration=$openGeneration",
+                if (isDebugBuild) {
+                    Log.d(
+                        "MidoriAIRadio",
+                        "Radio endpoints: stream=$streamUrl current=/radio/v1/current art=/radio/v1/art artImage=/radio/v1/art/image health=/health reconnectDelaysMs=$reconnectDelaysMs openGeneration=$openGeneration",
+                    )
+                }
+
+                freshStreamPlayerInstaller.install(
+                    replaceSource = {
+                        _playbackState.value = RadioPlaybackState.Connecting
+                        syncPlayerPlaylist(channel, forceRebuild = lastPlaylistQuality != quality)
+                        if (player.playbackState == Player.STATE_ENDED) {
+                            player.seekToDefaultPosition()
+                        }
+                    },
+                    playWhenReady = playWhenReadyAfterOpen,
+                    onSucceeded = onOpenSucceeded,
+                    onFailed = {
+                        _activeQuality.value = previousActiveQuality
+                        _pendingQuality.value = previousPendingQuality
+                        lastPlaylistChannel = previousPlaylistChannel
+                        lastPlaylistQuality = previousPlaylistQuality
+                        _playbackState.value = if (
+                            previousPlaybackState is RadioPlaybackState.SwitchingChannel
+                        ) {
+                            RadioPlaybackState.Connecting
+                        } else {
+                            previousPlaybackState
+                        }
+                    },
                 )
             }
-
-            _playbackState.value = RadioPlaybackState.Connecting
-
-            syncPlayerPlaylist(channel, forceRebuild = lastPlaylistQuality != quality)
-            if (player.playbackState == Player.STATE_ENDED) {
-                player.seekToDefaultPosition()
-            }
-            player.prepare()
-            player.playWhenReady = playWhenReadyAfterOpen
-            onOpenSucceeded()
+        } catch (_: RuntimeException) {
+            FreshStreamOpenResult.Failed
         }
     }
 
@@ -1143,7 +1169,7 @@ class RadioPlaybackService : MediaLibraryService() {
 
             return ConnectionResult.AcceptedResultBuilder(session, controller)
                 .setAvailableSessionCommands(sessionCommands)
-                .setAvailablePlayerCommands(ConnectionResult.DEFAULT_PLAYER_COMMANDS)
+                .setAvailablePlayerCommands(RADIO_SESSION_PLAYER_COMMANDS)
                 .setSessionExtras(RadioSessionSnapshotCodec.toBundle(lastPublishedSnapshot ?: snapshotForConnection()))
                 .build()
         }

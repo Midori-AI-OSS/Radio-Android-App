@@ -1,5 +1,6 @@
 package xyz.midoriai.radio.playback
 
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
@@ -265,6 +266,26 @@ class FreshStreamOpenCoordinatorTest {
     }
 
     @Test
+    fun failedSwitchOpen_restoresPlayerVolumeAndConnectingState() {
+        val coordinator = FreshStreamOpenCoordinator()
+        val volume = PlayerVolume(0f)
+        val player = volumePlayer(volume)
+        var state: RadioPlaybackState = RadioPlaybackState.SwitchingChannel("Focus")
+        val effects = playerEffects(player) { state = it }
+        val switchGeneration = coordinator.beginChannelSwitch()
+
+        effects.finishChannelSwitch(
+            coordinator = coordinator,
+            switchGeneration = switchGeneration,
+            openResult = FreshStreamOpenResult.Failed,
+            playbackDesired = true,
+        )
+
+        assertEquals(1f, player.volume)
+        assertEquals(RadioPlaybackState.Connecting, state)
+    }
+
+    @Test
     fun failedOpenTransaction_restoresActualPlayerVolumeAndReleasesAdmission() {
         val coordinator = FreshStreamOpenCoordinator()
         val volume = PlayerVolume(0f)
@@ -282,6 +303,69 @@ class FreshStreamOpenCoordinatorTest {
 
         assertEquals(1f, player.volume)
         assertEquals(2L, coordinator.tryBeginOpen())
+    }
+
+    @Test
+    fun admittedSourceInstallationException_restoresPlayerAndServiceState() {
+        val previousItem = MediaItem.Builder().setMediaId("all").build()
+        val state = InstallationPlayerState(
+            mediaItem = previousItem,
+            playWhenReady = true,
+            playbackState = Player.STATE_READY,
+            failNextSetAfterMutation = true,
+        )
+        val player = installationPlayer(state)
+        var selectedChannel = "all"
+        var playbackState: RadioPlaybackState = RadioPlaybackState.Playing
+
+        assertThrows(IllegalStateException::class.java) {
+            FreshStreamPlayerInstaller(player).install(
+                replaceSource = {
+                    playbackState = RadioPlaybackState.Connecting
+                    player.setMediaItem(MediaItem.Builder().setMediaId("focus").build())
+                },
+                playWhenReady = true,
+                onSucceeded = { selectedChannel = "focus" },
+                onFailed = { playbackState = RadioPlaybackState.Playing },
+            )
+        }
+
+        assertEquals("all", selectedChannel)
+        assertEquals(RadioPlaybackState.Playing, playbackState)
+        assertEquals("all", state.mediaItem?.mediaId)
+        assertTrue(state.playWhenReady)
+    }
+
+    @Test
+    fun admittedPreparationException_restoresPlayerAndServiceState() {
+        val previousItem = MediaItem.Builder().setMediaId("all").build()
+        val state = InstallationPlayerState(
+            mediaItem = previousItem,
+            playWhenReady = true,
+            playbackState = Player.STATE_READY,
+            failNextPrepare = true,
+        )
+        val player = installationPlayer(state)
+        var selectedChannel = "all"
+        var playbackState: RadioPlaybackState = RadioPlaybackState.Playing
+
+        assertThrows(IllegalStateException::class.java) {
+            FreshStreamPlayerInstaller(player).install(
+                replaceSource = {
+                    playbackState = RadioPlaybackState.Connecting
+                    player.setMediaItem(MediaItem.Builder().setMediaId("focus").build())
+                },
+                playWhenReady = true,
+                onSucceeded = { selectedChannel = "focus" },
+                onFailed = { playbackState = RadioPlaybackState.Playing },
+            )
+        }
+
+        assertEquals("all", selectedChannel)
+        assertEquals(RadioPlaybackState.Playing, playbackState)
+        assertEquals("all", state.mediaItem?.mediaId)
+        assertTrue(state.playWhenReady)
+        assertEquals(2, state.prepareCalls)
     }
 
     @Test
@@ -303,6 +387,15 @@ class FreshStreamOpenCoordinatorTest {
     }
 
     private data class PlayerVolume(var value: Float)
+
+    private data class InstallationPlayerState(
+        var mediaItem: MediaItem?,
+        var playWhenReady: Boolean,
+        var playbackState: Int,
+        var failNextSetAfterMutation: Boolean = false,
+        var failNextPrepare: Boolean = false,
+        var prepareCalls: Int = 0,
+    )
 
     private fun playerEffects(
         player: Player,
@@ -329,6 +422,48 @@ class FreshStreamOpenCoordinatorTest {
                 "hashCode" -> System.identityHashCode(proxy)
                 "equals" -> proxy === args?.firstOrNull()
                 "toString" -> "VolumePlayer"
+                else -> defaultValue(method)
+            }
+        } as Player
+    }
+
+    private fun installationPlayer(state: InstallationPlayerState): Player {
+        return Proxy.newProxyInstance(
+            Player::class.java.classLoader,
+            arrayOf(Player::class.java),
+        ) { proxy, method, args ->
+            when (method.name) {
+                "getCurrentMediaItem" -> state.mediaItem
+                "getPlayWhenReady" -> state.playWhenReady
+                "setPlayWhenReady" -> {
+                    state.playWhenReady = args?.firstOrNull() as Boolean
+                    null
+                }
+                "getPlaybackState" -> state.playbackState
+                "setMediaItem" -> {
+                    state.mediaItem = args?.firstOrNull() as MediaItem
+                    if (state.failNextSetAfterMutation) {
+                        state.failNextSetAfterMutation = false
+                        error("source installation failed")
+                    }
+                    null
+                }
+                "clearMediaItems" -> {
+                    state.mediaItem = null
+                    null
+                }
+                "prepare" -> {
+                    state.prepareCalls += 1
+                    if (state.failNextPrepare) {
+                        state.failNextPrepare = false
+                        error("preparation failed")
+                    }
+                    state.playbackState = Player.STATE_READY
+                    null
+                }
+                "hashCode" -> System.identityHashCode(proxy)
+                "equals" -> proxy === args?.firstOrNull()
+                "toString" -> "InstallationPlayer"
                 else -> defaultValue(method)
             }
         } as Player

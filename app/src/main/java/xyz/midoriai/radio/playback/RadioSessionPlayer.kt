@@ -5,6 +5,20 @@ import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 
+internal val RADIO_SESSION_PLAYER_COMMANDS: Player.Commands = Player.Commands.Builder()
+    .add(Player.COMMAND_PLAY_PAUSE)
+    .add(Player.COMMAND_PREPARE)
+    .add(Player.COMMAND_STOP)
+    .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+    .add(Player.COMMAND_SEEK_TO_PREVIOUS)
+    .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+    .add(Player.COMMAND_SEEK_TO_NEXT)
+    .add(Player.COMMAND_GET_CURRENT_MEDIA_ITEM)
+    .add(Player.COMMAND_GET_TIMELINE)
+    .add(Player.COMMAND_GET_METADATA)
+    .add(Player.COMMAND_SET_MEDIA_ITEM)
+    .build()
+
 internal class RadioSessionPlayer(
     player: Player,
     private val onPlay: () -> Unit,

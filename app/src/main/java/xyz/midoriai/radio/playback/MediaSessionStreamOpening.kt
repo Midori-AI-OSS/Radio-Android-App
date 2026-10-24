@@ -33,8 +33,10 @@ internal class MediaSessionStreamOpening(
 
     fun installResolvedSelection(installedItems: List<MediaItem>) {
         val channel = normalizePersistedChannel(resolveRequestedChannel(installedItems))
-        check(openSelectedStream(channel) == FreshStreamOpenResult.Opened) {
-            "Session stream installation was rejected"
+        when (openSelectedStream(channel)) {
+            FreshStreamOpenResult.Opened -> Unit
+            FreshStreamOpenResult.Rejected -> error("Session stream installation was rejected")
+            FreshStreamOpenResult.Failed -> error("Session stream installation failed")
         }
     }
 }
