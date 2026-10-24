@@ -1,6 +1,6 @@
 # [TASK] Centralize foreground stream opening and selection
 
-- Status: done
+- Status: wip
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
@@ -142,5 +142,12 @@ Make one service path responsible for admitting each foreground stream open/reop
 - Stream-install transactions skip metadata replacement. Metadata refresh runs after selection commit and is best-effort, so a refresh failure cannot restore the previous source or leave selection and source misaligned.
 - Rapid adjacent selections resolve from the pending explicit target, while same-channel foreground selection no longer replaces a live source outside canonical admission.
 - Behavioral tests cover successful and failed selection admission, including selected channel, persisted channel, installed source, pending retry cancellation, and metadata-refresh failure after installation.
+- `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew test --rerun-tasks --console=plain`: passed (24 tasks executed).
+- `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew :app:assembleDebug --rerun-tasks --console=plain`: passed (36 tasks executed).
+
+## Re-audit (2026-10-24)
+
+- The explicit-selection transaction is adequately covered through the shared production `openAndCommitChannelSelection` seam; no Android service harness is needed for that boundary.
+- Remains WIP: adjacent MediaSession dispatch is only counter-asserted with test callbacks. Add a focused production seam/test asserting the resulting selected and installed channel, including rapid adjacent selection from the pending target; do not require a full service harness.
 - `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew test --rerun-tasks --console=plain`: passed (24 tasks executed).
 - `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk GRADLE_USER_HOME=/tmp/gradle ./gradlew :app:assembleDebug --rerun-tasks --console=plain`: passed (36 tasks executed).
