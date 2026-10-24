@@ -1,6 +1,6 @@
 # [TASK] Centralize foreground stream opening and selection
 
-- Status: done
+- Status: wip
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
@@ -62,3 +62,7 @@ Make one service path responsible for admitting each foreground stream open/reop
 - `git diff --check`: passed.
 - `./gradlew test --offline --console=plain`: blocked before task execution because no Android SDK location is configured.
 - `./gradlew :app:assembleDebug --offline --console=plain`: blocked for the same missing Android SDK location. Docker remains unavailable to this user.
+
+## Re-audit (2026-10-24)
+
+- Remains WIP: a rejected switch open returns before resetting `_playbackState`, so it can remain `SwitchingChannel`; tests cover coordinator/forwarding behavior but not service-level MediaSession installation or actual player-volume restoration. Add service-level coverage and ensure rejected switches leave a consistent playback state. Both Gradle checks remain blocked by the missing Android SDK.
