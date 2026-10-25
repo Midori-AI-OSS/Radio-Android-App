@@ -126,10 +126,8 @@ class RadioPlaybackService : MediaLibraryService() {
     private val artFetchAtMsByChannel: MutableMap<String, Long> = mutableMapOf()
 
     private var playbackDesired: Boolean = false
-    private var reconnectAttempt: Int = 0
     private var reconnectJob: Job? = null
-    private var activeSourceGeneration: Long? = null
-    private val terminalOpenCoalescer = TerminalOpenCoalescer()
+    private val recoveryOrchestrator = RadioPlaybackRecoveryOrchestrator()
     private var channelSwitchJob: Job? = null
     private var pendingChannelSelection: String? = null
     private var metadataPollJob: Job? = null
@@ -213,7 +211,7 @@ class RadioPlaybackService : MediaLibraryService() {
 
                 if (playbackDesired) {
                     if (player.currentMediaItem?.mediaId == normalized) {
-                        reconnectAttempt = 0
+                        recoveryOrchestrator.resetErrorAttempts()
                         serviceScope.launch {
                             pollCurrentOnce(channelOverride = normalized)
                             pollArtOnce(channelOverride = normalized)
@@ -272,7 +270,7 @@ class RadioPlaybackService : MediaLibraryService() {
         }
 
         playbackDesired = true
-        reconnectAttempt = 0
+        recoveryOrchestrator.resetErrorAttempts()
         if (player.playbackState == Player.STATE_IDLE) {
             openFreshStream()
         } else {
@@ -312,7 +310,7 @@ class RadioPlaybackService : MediaLibraryService() {
             _pendingQuality.value = normalizedQuality
             freshStreamOpenCoordinator.invalidatePendingWork()
             cancelPendingReconnectJob()
-            terminalOpenCoalescer.cancel()
+            recoveryOrchestrator.cancelPendingRecovery()
             if (
                 !isHealthyPlayback(
                     playbackState = player.playbackState,
@@ -358,7 +356,7 @@ class RadioPlaybackService : MediaLibraryService() {
 
     private fun prepareForChannelSelection() {
         cancelPendingReconnectJob()
-        terminalOpenCoalescer.cancel()
+        recoveryOrchestrator.cancelPendingRecovery()
         freshStreamOpenCoordinator.supersedeForSelection {
             freshStreamPlayerEffects.restoreNormalVolume()
         }
@@ -436,7 +434,7 @@ class RadioPlaybackService : MediaLibraryService() {
                     return@launch
                 }
 
-                reconnectAttempt = 0
+                recoveryOrchestrator.resetErrorAttempts()
                 _playbackState.value = RadioPlaybackState.SwitchingChannel(toChannelLabel(channel))
 
                 fadePlayerVolume(0f, channelSwitchFadeDurationMs)
@@ -485,7 +483,7 @@ class RadioPlaybackService : MediaLibraryService() {
         onOpenSucceeded: () -> Unit = {},
     ): FreshStreamOpenResult {
         var openedSourceGeneration: Long? = null
-        val result = try {
+        val result = runFreshStreamOpenCatchingFailure {
             runFreshStreamOpenTransaction(
                 coordinator = freshStreamOpenCoordinator,
                 cancelPendingReconnect = ::cancelPendingReconnectJob,
@@ -549,12 +547,9 @@ class RadioPlaybackService : MediaLibraryService() {
                 )
                 openedSourceGeneration = openGeneration
             }
-        } catch (_: RuntimeException) {
-            FreshStreamOpenResult.Failed
         }
         return completeFreshStreamOpen(result) {
-            activeSourceGeneration = openedSourceGeneration
-            terminalOpenCoalescer.sourceOpened()
+            recoveryOrchestrator.sourceOpened(checkNotNull(openedSourceGeneration))
             onOpenSucceeded()
             runCatching(::syncCurrentMediaItemMetadata)
         }
@@ -567,14 +562,14 @@ class RadioPlaybackService : MediaLibraryService() {
 
     private fun clearReconnectState() {
         cancelPendingReconnectJob()
-        reconnectAttempt = 0
-        terminalOpenCoalescer.cancel()
+        recoveryOrchestrator.cancelPendingRecovery()
     }
 
     private fun isChannelSwitchInProgress(): Boolean = channelSwitchJob?.isActive == true
 
     private fun markPlaybackRecovered() {
-        clearReconnectState()
+        cancelPendingReconnectJob()
+        recoveryOrchestrator.markHealthy()
         _playbackState.value = RadioPlaybackState.Playing
     }
 
@@ -589,11 +584,11 @@ class RadioPlaybackService : MediaLibraryService() {
 
         cancelPendingReconnectJob()
 
-        reconnectAttempt += 1
-        val delayMs = errorReconnectDelayMs(reconnectAttempt)
+        val retry = recoveryOrchestrator.nextErrorRetry()
+        val delayMs = retry.delayMs
         val capturedGeneration = freshStreamOpenCoordinator.currentGeneration()
 
-        _playbackState.value = RadioPlaybackState.Reconnecting(reconnectAttempt, delayMs)
+        _playbackState.value = RadioPlaybackState.Reconnecting(retry.attempt, delayMs)
 
         reconnectJob = serviceScope.launch {
             delay(delayMs)
@@ -632,28 +627,24 @@ class RadioPlaybackService : MediaLibraryService() {
         }
     }
 
-    private fun continueAfterEndOfStream() {
-        val sourceGeneration = activeSourceGeneration ?: return
+    private fun continueAfterEndOfStream(
+        event: RadioPlaybackRecoveryOrchestrator.TerminalEvent,
+    ) {
         val sourceIsCurrent =
             player.currentMediaItem?.mediaId == normalizePersistedChannel(_selectedChannel.value) &&
                 lastPlaylistQuality == _activeQuality.value
-        if (
-            !shouldContinueEndOfStreamRecovery(
-                playbackDesired = playbackDesired,
-                playbackState = player.playbackState,
-                sourceIsCurrent = sourceIsCurrent,
-            ) || !freshStreamOpenCoordinator.canRunTerminalOpen(
+        recoveryOrchestrator.handleTerminalEvent(
+            event = event,
+            playbackDesired = playbackDesired,
+            playbackState = player.playbackState,
+            sourceIsCurrent = sourceIsCurrent,
+            canOpen = freshStreamOpenCoordinator.canRunTerminalOpen(
                 playbackDesired = playbackDesired,
                 channelSwitchInProgress = isChannelSwitchInProgress(),
-            ) || !terminalOpenCoalescer.tryBegin(sourceGeneration)
-        ) {
-            return
-        }
-
-        val result = openFreshStream()
-        if (shouldRetryFailedRecoveryOpen(result)) {
-            queueErrorReconnect()
-        }
+            ),
+            openImmediately = ::openFreshStream,
+            scheduleErrorRetry = ::queueErrorReconnect,
+        )
     }
 
     private fun commitQualityForOpen(quality: String): String {
@@ -696,6 +687,7 @@ class RadioPlaybackService : MediaLibraryService() {
             player.mediaItemCount != 1
 
         if (needsRebuild) {
+            recoveryOrchestrator.invalidateInstalledSource()
             player.setMediaItem(buildMediaItem(channel = normalizedSelected, quality = activeQuality))
             lastPlaylistChannel = normalizedSelected
             lastPlaylistQuality = activeQuality
@@ -1375,7 +1367,7 @@ class RadioPlaybackService : MediaLibraryService() {
             }
 
             if (playbackState == Player.STATE_ENDED) {
-                continueAfterEndOfStream()
+                recoveryOrchestrator.captureTerminalEvent()?.let(::continueAfterEndOfStream)
             }
         }
 

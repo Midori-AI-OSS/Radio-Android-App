@@ -28,24 +28,3 @@ internal fun shouldRestoreHealthyPlaybackAfterError(
 internal fun shouldRetryFailedRecoveryOpen(result: FreshStreamOpenResult): Boolean {
     return result == FreshStreamOpenResult.Failed
 }
-
-/** Coalesces repeated terminal callbacks for the same installed player source. */
-internal class TerminalOpenCoalescer {
-    private var pendingSourceGeneration: Long? = null
-
-    fun tryBegin(sourceGeneration: Long): Boolean {
-        if (pendingSourceGeneration == sourceGeneration) {
-            return false
-        }
-        pendingSourceGeneration = sourceGeneration
-        return true
-    }
-
-    fun sourceOpened() {
-        pendingSourceGeneration = null
-    }
-
-    fun cancel() {
-        pendingSourceGeneration = null
-    }
-}

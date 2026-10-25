@@ -48,19 +48,6 @@ class RadioPlaybackRecoveryPolicyTest {
     }
 
     @Test
-    fun terminalOpenCoalescer_rejectsDuplicateUntilANewSourceOpens() {
-        val coalescer = TerminalOpenCoalescer()
-
-        assertTrue(coalescer.tryBegin(8L))
-        assertFalse(coalescer.tryBegin(8L))
-        assertTrue(coalescer.tryBegin(9L))
-        coalescer.cancel()
-        assertTrue(coalescer.tryBegin(9L))
-        coalescer.sourceOpened()
-        assertTrue(coalescer.tryBegin(10L))
-    }
-
-    @Test
     fun failedEofOpen_usesErrorRetryTimingWhileSuccessfulOrRejectedOpenDoesNot() {
         assertTrue(shouldRetryFailedRecoveryOpen(FreshStreamOpenResult.Failed))
         assertFalse(shouldRetryFailedRecoveryOpen(FreshStreamOpenResult.Opened))
