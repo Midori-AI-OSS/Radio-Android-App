@@ -4,6 +4,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
+import kotlinx.coroutines.CancellationException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -294,11 +295,11 @@ class FreshStreamOpenCoordinatorTest {
     }
 
     @Test
-    fun failedSwitchOpen_restoresPlayerVolumeAndConnectingState() {
+    fun failedSwitchOpen_restoresPlayerVolumeWithoutOverwritingRecoveryState() {
         val coordinator = FreshStreamOpenCoordinator()
         val volume = PlayerVolume(0f)
         val player = volumePlayer(volume)
-        var state: RadioPlaybackState = RadioPlaybackState.SwitchingChannel("Focus")
+        var state: RadioPlaybackState = RadioPlaybackState.Reconnecting(attempt = 1, nextDelayMs = 50L)
         val effects = playerEffects(player) { state = it }
         val switchGeneration = coordinator.beginChannelSwitch()
 
@@ -310,7 +311,7 @@ class FreshStreamOpenCoordinatorTest {
         )
 
         assertEquals(1f, player.volume)
-        assertEquals(RadioPlaybackState.Connecting, state)
+        assertEquals(RadioPlaybackState.Reconnecting(attempt = 1, nextDelayMs = 50L), state)
     }
 
     @Test
@@ -392,6 +393,46 @@ class FreshStreamOpenCoordinatorTest {
         assertEquals("all", state.mediaItem?.mediaId)
         assertTrue(state.playWhenReady)
         assertEquals(2, state.prepareCalls)
+    }
+
+    @Test
+    fun cancellationDuringInstallation_restoresStateAndPropagatesWithoutFailureConversion() {
+        val previousItem = MediaItem.Builder().setMediaId("all").build()
+        val state = InstallationPlayerState(
+            mediaItem = previousItem,
+            playWhenReady = true,
+            playbackState = Player.STATE_READY,
+        )
+        val player = installationPlayer(state)
+        val cancellation = CancellationException("selection superseded")
+        var failureCleanupCalls = 0
+        var retryQueued = false
+        val coordinator = FreshStreamOpenCoordinator()
+
+        val thrown = assertThrows(CancellationException::class.java) {
+            val result = openFreshStreamPlayerSource(
+                coordinator = coordinator,
+                cancelPendingReconnect = {},
+            ) {
+                FreshStreamPlayerInstaller(player).install(
+                    replaceSource = {
+                        player.setMediaItem(MediaItem.Builder().setMediaId("focus").build())
+                        throw cancellation
+                    },
+                    playWhenReady = true,
+                    onFailed = { failureCleanupCalls += 1 },
+                )
+            }
+            retryQueued = shouldRetryFailedRecoveryOpen(result)
+        }
+
+        assertEquals(cancellation, thrown)
+        assertEquals(1, failureCleanupCalls)
+        assertEquals("all", state.mediaItem?.mediaId)
+        assertTrue(state.playWhenReady)
+        assertEquals(1, state.prepareCalls)
+        assertFalse(retryQueued)
+        assertEquals(2L, coordinator.tryBeginOpen())
     }
 
     @Test

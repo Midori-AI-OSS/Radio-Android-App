@@ -47,11 +47,7 @@ internal class FreshStreamOpenCoordinator {
     ) {
         if (isCurrentChannelSwitch(queuedGeneration)) {
             restoreVolume()
-            if (
-                openResult != null &&
-                openResult != FreshStreamOpenResult.Opened &&
-                playbackDesired
-            ) {
+            if (openResult == FreshStreamOpenResult.Rejected && playbackDesired) {
                 onRejectedOpen()
             }
         }
@@ -194,6 +190,22 @@ internal fun runFreshStreamOpenTransaction(
     return coordinator.runOpenTransaction(onFinished = onFinished) { openGeneration ->
         cancelPendingReconnect()
         transaction(openGeneration)
+    }
+}
+
+internal fun openFreshStreamPlayerSource(
+    coordinator: FreshStreamOpenCoordinator,
+    cancelPendingReconnect: () -> Unit,
+    onFinished: () -> Unit = {},
+    installSource: (openGeneration: Long) -> Unit,
+): FreshStreamOpenResult {
+    return runFreshStreamOpenCatchingFailure {
+        runFreshStreamOpenTransaction(
+            coordinator = coordinator,
+            cancelPendingReconnect = cancelPendingReconnect,
+            onFinished = onFinished,
+            transaction = installSource,
+        )
     }
 }
 

@@ -2,7 +2,7 @@ package xyz.midoriai.radio.playback
 
 /** Small state seam joining installed-source EOF events to error retry policy. */
 internal class RadioPlaybackRecoveryOrchestrator {
-    class InstalledSource internal constructor(internal val generation: Long)
+    class InstalledSource internal constructor()
 
     class TerminalEvent internal constructor(internal val source: InstalledSource)
 
@@ -12,8 +12,8 @@ internal class RadioPlaybackRecoveryOrchestrator {
     private var handledTerminalSource: InstalledSource? = null
     private var errorAttempt = 0
 
-    fun sourceOpened(generation: Long): InstalledSource {
-        return InstalledSource(generation).also {
+    fun sourceOpened(): InstalledSource {
+        return InstalledSource().also {
             installedSource = it
             handledTerminalSource = null
         }
@@ -56,7 +56,9 @@ internal class RadioPlaybackRecoveryOrchestrator {
     }
 
     fun nextErrorRetry(): ErrorRetry {
-        errorAttempt += 1
+        if (errorAttempt < Int.MAX_VALUE) {
+            errorAttempt += 1
+        }
         return ErrorRetry(errorAttempt, errorReconnectDelayMs(errorAttempt))
     }
 

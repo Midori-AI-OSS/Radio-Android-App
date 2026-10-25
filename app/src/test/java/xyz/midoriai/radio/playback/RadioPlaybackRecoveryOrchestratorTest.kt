@@ -10,7 +10,7 @@ class RadioPlaybackRecoveryOrchestratorTest {
     @Test
     fun eof_opensImmediatelyWithoutErrorDelay() {
         val orchestrator = RadioPlaybackRecoveryOrchestrator()
-        orchestrator.sourceOpened(4L)
+        orchestrator.sourceOpened()
         val event = checkNotNull(orchestrator.captureTerminalEvent())
         val effects = mutableListOf<String>()
 
@@ -34,7 +34,7 @@ class RadioPlaybackRecoveryOrchestratorTest {
     @Test
     fun failedEofOpen_fallsBackToDelayedUnboundedErrorRetry() {
         val orchestrator = RadioPlaybackRecoveryOrchestrator()
-        orchestrator.sourceOpened(8L)
+        orchestrator.sourceOpened()
         val event = checkNotNull(orchestrator.captureTerminalEvent())
         val retries = mutableListOf<RadioPlaybackRecoveryOrchestrator.ErrorRetry>()
 
@@ -57,7 +57,7 @@ class RadioPlaybackRecoveryOrchestratorTest {
     @Test
     fun rejectedEofOpen_doesNotBecomeAnErrorRetry() {
         val orchestrator = RadioPlaybackRecoveryOrchestrator()
-        orchestrator.sourceOpened(3L)
+        orchestrator.sourceOpened()
         var retryCount = 0
 
         orchestrator.handleTerminalEvent(
@@ -76,9 +76,9 @@ class RadioPlaybackRecoveryOrchestratorTest {
     @Test
     fun eof_suppressesPausedDuplicateAndStaleSourceEvents() {
         val orchestrator = RadioPlaybackRecoveryOrchestrator()
-        orchestrator.sourceOpened(1L)
+        orchestrator.sourceOpened()
         val staleEvent = checkNotNull(orchestrator.captureTerminalEvent())
-        orchestrator.sourceOpened(2L)
+        orchestrator.sourceOpened()
         val currentEvent = checkNotNull(orchestrator.captureTerminalEvent())
         var opens = 0
         val invoke = { event: RadioPlaybackRecoveryOrchestrator.TerminalEvent, desired: Boolean ->
@@ -90,7 +90,7 @@ class RadioPlaybackRecoveryOrchestratorTest {
                 canOpen = true,
                 openImmediately = {
                     opens += 1
-                    orchestrator.sourceOpened(3L)
+                    orchestrator.sourceOpened()
                     FreshStreamOpenResult.Opened
                 },
                 scheduleErrorRetry = {},
