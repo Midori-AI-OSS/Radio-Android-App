@@ -1,11 +1,15 @@
 package xyz.midoriai.radio.playback
 
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import xyz.midoriai.radio.ui.screens.nowplaying.RadioPlaybackState
 
+@RunWith(RobolectricTestRunner::class)
 class RadioPlaybackRecoveryControllerTest {
     @Test
     fun productionEofRouting_opensImmediatelyThenRetriesFailedAcquisitionsWithoutLimit() {
@@ -24,13 +28,10 @@ class RadioPlaybackRecoveryControllerTest {
             updatePlaybackState = states::add,
         )
         controller.sourceOpened()
-        val listener = RadioPlaybackPlayerEventListener(
+        val listener = listener(
+            controller = controller,
             playbackDesired = { true },
-            currentPlaybackState = { Player.STATE_ENDED },
-            onPlayerFailure = {},
-            onPlaybackState = controller::onPlaybackStateChanged,
-            onStopped = {},
-            onMediaItem = {},
+            playbackState = { Player.STATE_ENDED },
         )
 
         listener.onPlaybackStateChanged(Player.STATE_ENDED)
@@ -48,7 +49,7 @@ class RadioPlaybackRecoveryControllerTest {
     }
 
     @Test
-    fun explicitOpenFailure_usesRetryJobThatSelectionAndPauseCancelAndReset() {
+    fun productionListener_pauseAndNewSelectionCancelQueuedRetries() {
         val scheduler = RecordingRetryScheduler()
         val coordinator = FreshStreamOpenCoordinator()
         var desired = true
@@ -57,12 +58,20 @@ class RadioPlaybackRecoveryControllerTest {
             coordinator = coordinator,
             scheduler = scheduler,
             playbackDesired = { desired },
+            openFreshStream = {
+                retryOpens += 1
+                FreshStreamOpenResult.Opened
+            },
         )
 
-        controller.retryFailedOpen(FreshStreamOpenResult.Failed) {
-            retryOpens += 1
-            FreshStreamOpenResult.Opened
-        }
+        val listener = listener(
+            controller = controller,
+            playbackDesired = { desired },
+            playbackState = { Player.STATE_IDLE },
+            onStopped = controller::cancelPendingRecovery,
+        )
+
+        listener.onPlayerError(playbackException())
         val selectionRetry = scheduler.latest()
         coordinator.invalidatePendingWork()
         controller.cancelPendingRecovery()
@@ -71,27 +80,29 @@ class RadioPlaybackRecoveryControllerTest {
         assertEquals(0, retryOpens)
         assertFalse(selectionRetry.isActive)
 
-        controller.retryFailedOpen(FreshStreamOpenResult.Failed) {
-            retryOpens += 1
-            FreshStreamOpenResult.Opened
-        }
+        listener.onPlayerError(playbackException())
         val pauseRetry = scheduler.latest()
         desired = false
         coordinator.invalidatePendingWork()
-        controller.cancelPendingRecovery()
+        listener.onPlayWhenReadyChanged(
+            false,
+            Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST,
+        )
         pauseRetry.runEvenIfCancelled()
 
         assertEquals(0, retryOpens)
         assertFalse(pauseRetry.isActive)
 
         desired = true
-        controller.retryFailedOpen(FreshStreamOpenResult.Failed)
+        listener.onPlayerError(playbackException())
         assertEquals(50L, scheduler.latest().delayMs)
     }
 
     @Test
-    fun explicitSelectionFailure_retriesEvenWhenInstallerRestoredHealthyOldSource() {
+    fun productionListener_readyFromRolledBackSourceDoesNotCancelExplicitSelectionRetry() {
         val scheduler = RecordingRetryScheduler()
+        var currentSource = "all"
+        val desiredSource = "focus"
         var retryOpens = 0
         val controller = controller(
             coordinator = FreshStreamOpenCoordinator(),
@@ -101,13 +112,76 @@ class RadioPlaybackRecoveryControllerTest {
             isPlaying = { true },
         )
 
-        controller.retryFailedOpen(FreshStreamOpenResult.Failed) {
-            retryOpens += 1
-            FreshStreamOpenResult.Opened
-        }
+        controller.retryFailedOpen(
+            result = FreshStreamOpenResult.Failed,
+            recoveryTargetSatisfied = { currentSource == desiredSource },
+            retryOpen = {
+                retryOpens += 1
+                currentSource = desiredSource
+                FreshStreamOpenResult.Opened
+            },
+        )
+        val listener = listener(
+            controller = controller,
+            playbackDesired = { true },
+            playbackState = { Player.STATE_READY },
+        )
+
+        listener.onPlaybackStateChanged(Player.STATE_READY)
         scheduler.runNext()
 
         assertEquals(1, retryOpens)
+    }
+
+    @Test
+    fun productionListener_playerErrorQueuesCanonicalRetry() {
+        val scheduler = RecordingRetryScheduler()
+        var opens = 0
+        val controller = controller(
+            coordinator = FreshStreamOpenCoordinator(),
+            scheduler = scheduler,
+            openFreshStream = {
+                opens += 1
+                FreshStreamOpenResult.Opened
+            },
+        )
+        val listener = listener(
+            controller = controller,
+            playbackDesired = { true },
+            playbackState = { Player.STATE_IDLE },
+        )
+
+        listener.onPlayerError(playbackException())
+        scheduler.runNext()
+
+        assertEquals(listOf(50L), scheduler.scheduledDelays)
+        assertEquals(1, opens)
+    }
+
+    @Test
+    fun productionListener_repeatedTerminalStateDoesNotReopenUnchangedSource() {
+        val scheduler = RecordingRetryScheduler()
+        var opens = 0
+        val controller = controller(
+            coordinator = FreshStreamOpenCoordinator(),
+            scheduler = scheduler,
+            playbackState = { Player.STATE_ENDED },
+            openFreshStream = {
+                opens += 1
+                FreshStreamOpenResult.Opened
+            },
+        )
+        controller.sourceOpened()
+        val listener = listener(
+            controller = controller,
+            playbackDesired = { true },
+            playbackState = { Player.STATE_ENDED },
+        )
+
+        listener.onPlaybackStateChanged(Player.STATE_ENDED)
+        listener.onPlaybackStateChanged(Player.STATE_ENDED)
+
+        assertEquals(1, opens)
     }
 
     @Test
@@ -153,6 +227,7 @@ class RadioPlaybackRecoveryControllerTest {
         controller.replacePendingRetryWithFailedOpen(
             result = FreshStreamOpenResult.Failed,
             isStillCurrent = { true },
+            recoveryTargetSatisfied = { true },
             retryOpen = {
                 targetOpens += 1
                 FreshStreamOpenResult.Opened
@@ -200,6 +275,30 @@ class RadioPlaybackRecoveryControllerTest {
             channelSwitchInProgress = { false },
             openFreshStream = openFreshStream,
             updatePlaybackState = updatePlaybackState,
+        )
+    }
+
+    private fun listener(
+        controller: RadioPlaybackRecoveryController,
+        playbackDesired: () -> Boolean,
+        playbackState: () -> Int,
+        onStopped: () -> Unit = {},
+    ): RadioPlaybackPlayerEventListener {
+        return RadioPlaybackPlayerEventListener(
+            playbackDesired = playbackDesired,
+            currentPlaybackState = playbackState,
+            onPlayerFailure = { controller.onPlayerError() },
+            onPlaybackState = controller::onPlaybackStateChanged,
+            onStopped = onStopped,
+            onMediaItem = {},
+        )
+    }
+
+    private fun playbackException(): PlaybackException {
+        return PlaybackException(
+            "test failure",
+            null,
+            PlaybackException.ERROR_CODE_UNSPECIFIED,
         )
     }
 

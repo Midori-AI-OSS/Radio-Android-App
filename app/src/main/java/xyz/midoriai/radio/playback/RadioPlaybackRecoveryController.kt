@@ -63,6 +63,7 @@ internal class RadioPlaybackRecoveryController(
     private val orchestrator = RadioPlaybackRecoveryOrchestrator()
     private var retryHandle: RecoveryRetryHandle? = null
     private var retryToken = 0L
+    private var pendingRecoveryTargetSatisfied: (() -> Boolean)? = null
 
     fun sourceOpened() {
         orchestrator.sourceOpened()
@@ -75,7 +76,10 @@ internal class RadioPlaybackRecoveryController(
     fun onPlaybackStateChanged(state: Int) {
         if (!playbackDesired()) return
 
-        if (isHealthyPlayback(state, playWhenReady(), isPlaying())) {
+        if (
+            isHealthyPlayback(state, playWhenReady(), isPlaying()) &&
+            pendingRecoveryTargetSatisfied?.invoke() != false
+        ) {
             markPlaybackRecovered()
         }
         if (state == Player.STATE_ENDED) {
@@ -102,32 +106,37 @@ internal class RadioPlaybackRecoveryController(
     }
 
     fun onPlayerError() {
-        if (
-            shouldRestoreHealthyPlaybackAfterError(
-                playbackState = playbackState(),
-                playWhenReady = playWhenReady(),
-                isPlaying = isPlaying(),
-            )
-        ) {
-            markPlaybackRecovered()
-        } else {
-            queueErrorReconnect(
-                retryOpen = openFreshStream,
-                isStillCurrent = sourceIsCurrent,
-                stopWhenHealthy = true,
-            )
+        val healthy = shouldRestoreHealthyPlaybackAfterError(
+            playbackState = playbackState(),
+            playWhenReady = playWhenReady(),
+            isPlaying = isPlaying(),
+        )
+        if (healthy) {
+            if (pendingRecoveryTargetSatisfied?.invoke() != false) {
+                markPlaybackRecovered()
+            }
+            return
         }
+        if (pendingRecoveryTargetSatisfied != null) return
+
+        queueErrorReconnect(
+            retryOpen = openFreshStream,
+            isStillCurrent = sourceIsCurrent,
+            stopWhenHealthy = true,
+        )
     }
 
     fun retryFailedOpen(
         result: FreshStreamOpenResult,
         isStillCurrent: () -> Boolean = { true },
+        recoveryTargetSatisfied: () -> Boolean = sourceIsCurrent,
         retryOpen: () -> FreshStreamOpenResult = openFreshStream,
     ) {
         if (shouldRetryFailedRecoveryOpen(result)) {
             queueErrorReconnect(
                 retryOpen = retryOpen,
                 isStillCurrent = isStillCurrent,
+                recoveryTargetSatisfied = recoveryTargetSatisfied,
                 stopWhenHealthy = false,
             )
         }
@@ -136,12 +145,14 @@ internal class RadioPlaybackRecoveryController(
     fun replacePendingRetryWithFailedOpen(
         result: FreshStreamOpenResult,
         isStillCurrent: () -> Boolean,
+        recoveryTargetSatisfied: () -> Boolean,
         retryOpen: () -> FreshStreamOpenResult,
     ) {
         cancelPendingRetry()
         retryFailedOpen(
             result = result,
             isStillCurrent = isStillCurrent,
+            recoveryTargetSatisfied = recoveryTargetSatisfied,
             retryOpen = retryOpen,
         )
     }
@@ -151,6 +162,11 @@ internal class RadioPlaybackRecoveryController(
     }
 
     fun cancelPendingRetry() {
+        cancelRetryDelayForOpen()
+        pendingRecoveryTargetSatisfied = null
+    }
+
+    fun cancelRetryDelayForOpen() {
         retryToken += 1
         retryHandle?.cancel()
         retryHandle = null
@@ -170,10 +186,12 @@ internal class RadioPlaybackRecoveryController(
     private fun queueErrorReconnect(
         retryOpen: () -> FreshStreamOpenResult,
         isStillCurrent: () -> Boolean,
+        recoveryTargetSatisfied: () -> Boolean = sourceIsCurrent,
         stopWhenHealthy: Boolean,
     ) {
         if (!playbackDesired() || retryHandle != null) return
 
+        pendingRecoveryTargetSatisfied = recoveryTargetSatisfied
         val retry = orchestrator.nextErrorRetry()
         val capturedGeneration = coordinator.currentGeneration()
         val token = ++retryToken
@@ -182,9 +200,13 @@ internal class RadioPlaybackRecoveryController(
             if (token != retryToken) return@retry
             retryHandle = null
 
-            if (!isStillCurrent()) return@retry
+            if (!isStillCurrent()) {
+                pendingRecoveryTargetSatisfied = null
+                return@retry
+            }
             if (
                 stopWhenHealthy &&
+                recoveryTargetSatisfied() &&
                 shouldRestoreHealthyPlaybackAfterError(
                     playbackState = playbackState(),
                     playWhenReady = playWhenReady(),
@@ -201,6 +223,7 @@ internal class RadioPlaybackRecoveryController(
                     channelSwitchInProgress = channelSwitchInProgress(),
                 )
             ) {
+                pendingRecoveryTargetSatisfied = null
                 return@retry
             }
 
@@ -209,8 +232,11 @@ internal class RadioPlaybackRecoveryController(
                 queueErrorReconnect(
                     retryOpen = retryOpen,
                     isStillCurrent = isStillCurrent,
+                    recoveryTargetSatisfied = recoveryTargetSatisfied,
                     stopWhenHealthy = stopWhenHealthy,
                 )
+            } else {
+                pendingRecoveryTargetSatisfied = null
             }
         }
     }

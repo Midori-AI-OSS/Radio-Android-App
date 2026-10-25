@@ -90,7 +90,6 @@ class RadioPlaybackRecoveryOrchestratorTest {
                 canOpen = true,
                 openImmediately = {
                     opens += 1
-                    orchestrator.sourceOpened()
                     FreshStreamOpenResult.Opened
                 },
                 scheduleErrorRetry = {},
