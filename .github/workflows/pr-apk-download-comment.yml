@@ -33,7 +33,7 @@ jobs:
                 artifact,
                 match: /^midoriai-radio-debug-pr-(\d+)-([0-9a-f]{8})$/.exec(artifact.name),
               }))
-              .filter(({ match }) => match && match[2] === run.head_sha.slice(0, 8));
+              .filter(({ match }) => match);
 
             if (matches.length !== 1) {
               core.info(`Expected one APK artifact from run ${run.id}; found ${matches.length}.`);
@@ -47,6 +47,8 @@ jobs:
               core.info('Pull request is no longer open against main.');
               return;
             }
+            // The artifact suffix is the checkout's synthetic PR merge SHA, not run.head_sha.
+            // GitHub ties artifacts to this workflow run; validate the PR number and actual head below.
             // For pull_request runs the checked-out SHA is normally the test merge commit.
             // Reject stale or unrelated runs before updating a visible PR download.
             if (run.head_sha !== pr.merge_commit_sha && run.head_sha !== pr.head.sha) {
