@@ -47,6 +47,50 @@ class RadioSessionPlayerTest {
     }
 
     @Test
+    fun sessionMetadataPublishesWithoutMutatingOrPreparingTheAudioSource() {
+        val original = MediaItem.Builder()
+            .setMediaId("focus")
+            .setUri("https://radio.example/focus/high")
+            .setMediaMetadata(MediaMetadata.Builder().setTitle("Old track").build())
+            .build()
+        val state = FakePlayerState(currentMediaItem = original)
+        val sessionPlayer = RadioSessionPlayer(
+            player = fakePlayer(state = state),
+            onPlay = {},
+            onPause = {},
+            onSelectAdjacentChannel = {},
+            onSetMediaItems = {},
+        )
+        var receivedTitle: CharSequence? = null
+        var metadataEvents = 0
+        sessionPlayer.addListener(object : Player.Listener {
+            override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
+                receivedTitle = mediaMetadata.title
+            }
+            override fun onEvents(player: Player, events: Player.Events) {
+                if (events.contains(Player.EVENT_MEDIA_METADATA_CHANGED)) metadataEvents++
+            }
+        })
+
+        val metadata = original.mediaMetadata.buildUpon()
+            .setTitle("New track")
+            .setDisplayTitle("New track")
+            .setArtist("Focus")
+            .build()
+        sessionPlayer.publishPresentationMetadata(metadata)
+        sessionPlayer.publishPresentationMetadata(metadata)
+
+        assertEquals("New track", sessionPlayer.currentMediaItem?.mediaMetadata?.title)
+        assertEquals("New track", sessionPlayer.mediaMetadata.title)
+        assertEquals("New track", receivedTitle)
+        assertEquals(1, metadataEvents)
+        assertEquals(original, state.currentMediaItem)
+        assertEquals("https://radio.example/focus/high", state.currentMediaItem?.localConfiguration?.uri.toString())
+        assertEquals(0, state.setMediaItemCalls)
+        assertEquals(0, state.prepareCalls)
+    }
+
+    @Test
     fun liveStreamSessionPlayer_preservesTransportCallbacks() {
         val callbacks = mutableListOf<String>()
         val sessionPlayer = RadioSessionPlayer(
