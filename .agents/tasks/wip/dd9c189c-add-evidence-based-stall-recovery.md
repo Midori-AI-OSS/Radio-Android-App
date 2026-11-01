@@ -25,3 +25,10 @@ Recover promptly when playback is still desired but actual foreground playback h
 - [ ] A confirmed stall triggers one fresh open, while normal buffering, actual playback, pause/stop, and source supersession do not.
 - [ ] Tests cover startup coverage, timeout behavior, cancellation, and stale-source protection.
 - [ ] `./gradlew test` and `./gradlew :app:assembleDebug` pass.
+
+## Implementation update — 2026-10-31
+
+- Added `RadioPlaybackProgressGuard` on a separate branch. It samples Media3 position every 5 seconds while a fresh foreground source is desired; three consecutive unchanged samples following a baseline (approximately 20 seconds minimum) trigger one canonical open. This is a narrow, source-generation-bound position-progress check aimed at the device-observed 27-second and 64-second silent stalls with missing EOF.
+- Guards cancel on pause/stop, source replacement, and explicit channel switches. A source-generation mismatch or stale scheduled callback cannot reopen an older stream.
+- Unit tests cover stuck positions, continuing progress, pause, stale callbacks, and supersession.
+- **Verification remains pending:** GitHub connector writes succeeded, but this environment cannot reach GitHub via local git and has no Android SDK; `./gradlew test`, `./gradlew :app:assembleDebug`, and physical-device validation were not run. Position progress is a proxy for audible output; real device checks are required before marking this task done.

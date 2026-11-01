@@ -91,7 +91,7 @@ class RadioPlaybackService : MediaLibraryService() {
             }
     }
 
-    private val sessionPlayer: Player by lazy {
+    private val sessionPlayer: RadioSessionPlayer by lazy {
         mediaSessionStreamOpening.wrapPlayer(
             player = player,
             onPlay = this::play,
@@ -163,6 +163,27 @@ class RadioPlaybackService : MediaLibraryService() {
             updatePlaybackState = { _playbackState.value = it },
         )
     }
+    private val progressGuard by lazy {
+        RadioPlaybackProgressGuard(
+            scheduler = RecoveryRetryScheduler { delayMs, action ->
+                val job = serviceScope.launch {
+                    delay(delayMs)
+                    action()
+                }
+                RecoveryRetryHandle(job::cancel)
+            },
+            generation = freshStreamOpenCoordinator::currentGeneration,
+            playbackDesired = { playbackDesired },
+            sourceIsCurrent = {
+                player.currentMediaItem?.mediaId == normalizePersistedChannel(_selectedChannel.value) &&
+                    lastPlaylistQuality == _activeQuality.value
+            },
+            positionMs = { player.currentPosition },
+            open = {
+                recoveryController.retryFailedOpen(openFreshStream())
+            },
+        )
+    }
     private var lastObservedChannel: String? = null
     private var lastObservedQuality: String? = null
     private var lastPlaylistChannel: String? = null
@@ -187,6 +208,7 @@ class RadioPlaybackService : MediaLibraryService() {
     override fun onGetSession(controllerInfo: ControllerInfo): MediaLibrarySession? = mediaSession
 
     override fun onDestroy() {
+        progressGuard.cancel()
         clearReconnectState()
         freshStreamOpenCoordinator.invalidateChannelSwitch()
         channelSwitchJob?.cancel()
@@ -311,6 +333,7 @@ class RadioPlaybackService : MediaLibraryService() {
 
     private fun pausePlayback() {
         playbackDesired = false
+        progressGuard.cancel()
         freshStreamOpenCoordinator.invalidatePendingWork()
         freshStreamOpenCoordinator.invalidateChannelSwitch()
         clearReconnectState()
@@ -386,6 +409,7 @@ class RadioPlaybackService : MediaLibraryService() {
     }
 
     private fun prepareForChannelSelection() {
+        progressGuard.cancel()
         recoveryController.cancelPendingRecovery()
         freshStreamOpenCoordinator.supersedeForSelection {
             freshStreamPlayerEffects.restoreNormalVolume()
@@ -478,6 +502,7 @@ class RadioPlaybackService : MediaLibraryService() {
     }
 
     private fun switchChannelWithFade(channel: String) {
+        progressGuard.cancel()
         recoveryController.cancelPendingRetry()
         val switchGeneration = freshStreamOpenCoordinator.beginChannelSwitch()
         channelSwitchJob?.cancel()
@@ -626,6 +651,7 @@ class RadioPlaybackService : MediaLibraryService() {
         }
         return completeFreshStreamOpen(result) {
             recoveryController.sourceOpened()
+            progressGuard.sourceOpened()
             onOpenSucceeded()
             runCatching(::syncCurrentMediaItemMetadata)
         }
@@ -682,6 +708,7 @@ class RadioPlaybackService : MediaLibraryService() {
             player.mediaItemCount != 1
 
         if (needsRebuild) {
+            progressGuard.cancel()
             recoveryController.invalidateInstalledSource()
             player.setMediaItem(buildMediaItem(channel = normalizedSelected, quality = activeQuality))
             lastPlaylistChannel = normalizedSelected
@@ -849,22 +876,12 @@ class RadioPlaybackService : MediaLibraryService() {
         val currentItem = player.currentMediaItem ?: return
         val currentChannel = currentItem.mediaId.takeIf { it.isNotBlank() }
             ?: normalizePersistedChannel(_selectedChannel.value)
-        val currentIndex = player.currentMediaItemIndex.takeIf { it >= 0 }
-            ?: 0.takeIf { player.mediaItemCount == 1 }
-            ?: return
-        if (currentIndex !in 0 until player.mediaItemCount) {
-            return
-        }
-
         val fingerprint = buildMetadataFingerprint(currentChannel)
         if (fingerprint == lastPublishedMetadataFingerprint) {
             return
         }
 
-        val updatedItem = currentItem.buildUpon()
-            .setMediaMetadata(buildMediaMetadata(currentChannel))
-            .build()
-        player.replaceMediaItem(currentIndex, updatedItem)
+        sessionPlayer.publishPresentationMetadata(buildMediaMetadata(currentChannel))
         lastPublishedMetadataFingerprint = fingerprint
     }
 
@@ -1183,7 +1200,8 @@ class RadioPlaybackService : MediaLibraryService() {
         return listOf("all") + normalized
     }
 
-    private fun handlePlayerError(@Suppress("UNUSED_PARAMETER") error: PlaybackException) {
+    private fun handlePlayerError(error: PlaybackException) {
+        Log.e("MidoriAIRadio", "Playback failed: code=${error.errorCodeName} (${error.errorCode}), message=${error.message}", error)
         recoveryController.onPlayerError()
     }
 

@@ -15,7 +15,7 @@ internal class MediaSessionStreamOpening(
         onPlay: () -> Unit,
         onPause: () -> Unit,
         onSelectAdjacentChannel: (Int) -> Unit,
-    ): Player {
+    ): RadioSessionPlayer {
         return RadioSessionPlayer(
             player = player,
             onPlay = onPlay,
