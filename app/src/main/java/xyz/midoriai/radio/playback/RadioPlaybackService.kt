@@ -91,7 +91,7 @@ class RadioPlaybackService : MediaLibraryService() {
             }
     }
 
-    private val sessionPlayer: Player by lazy {
+    private val sessionPlayer: RadioSessionPlayer by lazy {
         mediaSessionStreamOpening.wrapPlayer(
             player = player,
             onPlay = this::play,
@@ -849,22 +849,12 @@ class RadioPlaybackService : MediaLibraryService() {
         val currentItem = player.currentMediaItem ?: return
         val currentChannel = currentItem.mediaId.takeIf { it.isNotBlank() }
             ?: normalizePersistedChannel(_selectedChannel.value)
-        val currentIndex = player.currentMediaItemIndex.takeIf { it >= 0 }
-            ?: 0.takeIf { player.mediaItemCount == 1 }
-            ?: return
-        if (currentIndex !in 0 until player.mediaItemCount) {
-            return
-        }
-
         val fingerprint = buildMetadataFingerprint(currentChannel)
         if (fingerprint == lastPublishedMetadataFingerprint) {
             return
         }
 
-        val updatedItem = currentItem.buildUpon()
-            .setMediaMetadata(buildMediaMetadata(currentChannel))
-            .build()
-        player.replaceMediaItem(currentIndex, updatedItem)
+        sessionPlayer.publishPresentationMetadata(buildMediaMetadata(currentChannel))
         lastPublishedMetadataFingerprint = fingerprint
     }
 
@@ -1183,7 +1173,8 @@ class RadioPlaybackService : MediaLibraryService() {
         return listOf("all") + normalized
     }
 
-    private fun handlePlayerError(@Suppress("UNUSED_PARAMETER") error: PlaybackException) {
+    private fun handlePlayerError(error: PlaybackException) {
+        Log.e("MidoriAIRadio", "Playback failed: code=${error.errorCodeName} (${error.errorCode}), message=${error.message}", error)
         recoveryController.onPlayerError()
     }
 
