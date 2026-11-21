@@ -1,6 +1,6 @@
 # [TASK] Verify foreground audio recovery on an Android device
 
-- Status: ready
+- Status: blocked-by-environment (physical device required)
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder (device required)
@@ -37,3 +37,10 @@ Keep detailed results for this fix here. If the run also covers checks in the re
 - [ ] At least three real track boundaries are observed. Stream-open claims are backed by request/log evidence; checks without observable required evidence are blocked, not inferred as passes.
 - [ ] No stale channel/quality recovery, duplicate open, pause/stop resurrection, or metadata-induced source replacement is observed.
 - [ ] Runtime verification is not marked passed when device testing was blocked.
+
+## Environment update — 2026-11-21
+
+- Android SDK and adb are available at `/tmp/agents-artifacts/android-sdk`; an API 36 x86_64 AVD (`sdk_gphone64_x86_64`) booted and accepted the debug APK. No physical Android device is attached.
+- `/dev/kvm` is unavailable, so the AVD runs in TCG software emulation. Android System UI and launcher repeatedly reported ANRs; the app remained at “Fetching current track…”. The emulator log also reports `Could not init 'pa' audio driver` (no PulseAudio output). It cannot supply the required audible-playback, stable state-observation, three-track-boundary, or attributable open-count evidence.
+- Host requests to `/health` and `/radio/v1/current?channel=all` returned HTTP 200, and the stream returned HTTP 200 plus 1.5 MB during a five-second sample. The emulator had no direct DNS (`ping radio.midori-ai.xyz`: `unknown host`); proxy setup did not produce a reliable playback run.
+- Result: physical-device acceptance remains BLOCKED. No phone playback, boundary, recovery, or audible success is claimed. Run this task on the physical Android 16 phone with the listed logcat/network evidence before marking it done.

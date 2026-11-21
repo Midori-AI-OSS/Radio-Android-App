@@ -1,6 +1,6 @@
 # [TASK] Separate normal stream-end and player-error recovery
 
-- Status: ready
+- Status: in-progress (service integration criterion and current test execution remain)
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
@@ -25,7 +25,7 @@ Handle normal stream completion and actual player failures as distinct causes, w
 - [x] EOF handling follows a reviewable evidence-task classification. The EOF recovery admission is bound to the currently installed source/event identity rather than comparing a generation sampled twice in one callback, and execution rechecks current ended/source/selection state.
 - [x] The normal EOF event calls the canonical opener immediately without incrementing error attempts. Only a `Failed` open enters error backoff; a `Rejected` open does not.
 - [x] Player errors and every retryable failed open use the canonical opener and retry indefinitely with delay capped at `1500 ms`; stale retries cannot override a newer source. `Rejected` opens do not retry.
-- [ ] Behavior tests exercise production listener/service wiring for EOF duplicate admission, player-error queuing, and actual retry survival/cancellation on restored-source READY, pause/stop, and newer selections; helper/coordinator-only coverage is insufficient.
+- [ ] Add an integration test that starts `RadioPlaybackService` and exercises its actual player-listener registration and service selection/stop callbacks for EOF duplicate admission, player-error queuing, restored-source READY, pause/stop, and newer-selection cancellation. Existing tests exercise `RadioPlaybackPlayerEventListener` and `RadioPlaybackRecoveryController` separately, but do not execute the service's listener registration/callback wiring.
 - [x] Cancellation exceptions propagate through the installer/open path and do not become retryable `Failed` results; rollback/failure side effects on cancellation are explicitly tested.
 - [x] `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk ./gradlew test --rerun-tasks` and `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk ./gradlew :app:assembleDebug --rerun-tasks` pass (fresh rerun 2026-10-25; 24 and 36 actionable tasks executed, respectively).
 - [x] Device Media3 `Player` behavior at finite-response EOF is explicitly recorded as `BLOCKED — unverified`, with no runtime-success claim and follow-up in the separate device-verification task.
@@ -59,3 +59,9 @@ Handle normal stream completion and actual player failures as distinct causes, w
 - Exercise production callback wiring for `onPlayerError` retry queuing and retry cancellation/invalidation on pause/stop and newer selections; current coverage directly calls controller/coordinator helpers or checks source text.
 - Directly test duplicate admission by delivering the same captured terminal event twice while the installed source remains unchanged; the existing repeated-event test changes source during its first open and therefore tests stale-source rejection instead.
 - Preserve unlimited retries with delays `50, 100, 200, 400, 800, 1500 ms`, continuing at `1500 ms`; do not add a finite attempt limit. The latest recorded host Gradle results remain applicable, and app code was not changed in this audit.
+
+## Verification update — 2026-11-21
+
+- Existing tests now cover the production listener/controller seam for immediate EOF plus duplicate suppression, `onPlayerError` retrying through the canonical opener, pause/stop cancellation, explicit-selection supersession, and prior-source READY not cancelling the requested retry. In particular, `productionListener_repeatedTerminalStateDoesNotReopenUnchangedSource` leaves the installed source unchanged across the second EOF callback, so it does test same-source duplicate admission.
+- The unchecked integration criterion remains open because these tests do not instantiate `RadioPlaybackService` and verify its actual ExoPlayer listener registration and service callback wiring.
+- `:app:compileDebugUnitTestKotlin` and `:app:assembleDebug --rerun-tasks` pass. Test execution is blocked by the Robolectric Maven artifact proxy failure recorded in `a0e00f8c`; no automated test result is claimed for this run.

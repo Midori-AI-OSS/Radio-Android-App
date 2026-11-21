@@ -94,3 +94,7 @@ acceptance criteria 1 and 3 remain unmet by design, not by failure. This file st
 5. With all checks passing, set `Status: done` and archive to `.agents/tasks/done/`.
 
 Unblocking this task unblocks T8 (d6b4fdad), which depends on it.
+
+## Environment update — 2026-11-21
+
+The earlier 2026-08-15 blocker described that host at that time. This run now has Android SDK/adb and an API 36 x86_64 AVD, but still has no attached physical Android 16 test device. The AVD ran under software TCG without `/dev/kvm`, repeatedly reported Android system ANRs, and has no PulseAudio output. The app could be installed/launched, but the emulator did not provide usable playback evidence. All five checks remain BLOCKED pending the physical phone; no device pass is inferred from the emulator or host HTTP probes.

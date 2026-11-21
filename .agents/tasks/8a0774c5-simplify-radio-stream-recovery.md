@@ -9,12 +9,12 @@
 
 ## Active work items
 
-- `.agents/tasks/wip/2641ed31-verify-stream-and-stall-recovery-evidence.md`
-- `.agents/tasks/wip/e5bc5a42-centralize-foreground-stream-opening.md`
 - `.agents/tasks/wip/72398e06-separate-eof-and-error-recovery.md`
 - `.agents/tasks/wip/dd9c189c-add-evidence-based-stall-recovery.md`
 - `.agents/tasks/wip/a0e00f8c-keep-metadata-refresh-source-neutral.md`
 - `.agents/tasks/wip/5a84a5c1-verify-foreground-audio-recovery-on-device.md`
+
+The earlier evidence and canonical-opener work items are not present in the current task tree. Their recorded evidence is referenced from the EOF task's historical commit note; the implementation is present in `RadioPlaybackService` and playback policy classes.
 
 The execution plan below is retained as historical context, not as the active task specification. In particular, per-track EOF semantics and watchdog timing are not settled assumptions: follow the evidence task and the linked work items before implementing recovery.
 
@@ -58,7 +58,7 @@ Repository: `Midori-AI-OSS/Cookie-Club-Bots`
 
 Relevant paths:
 
-- `Webserver-RS/crates/bin/src/routes.rs`
+- `Webserver-RS/crates/radio/src/routes.rs` (the former `crates/bin/src/routes.rs` path is no longer present)
 - `Webserver-RS/crates/radio/src/transcode.rs`
 
 `GET /radio/v1/stream` asks the station for a `StreamSource`.

@@ -1,6 +1,6 @@
 # [TASK] Recover stalled desired foreground playback
 
-- Status: ready
+- Status: in-progress (implementation present; verification blocked-by-environment)
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
@@ -21,10 +21,10 @@ Recover promptly when playback is still desired but actual foreground playback h
 
 ## Acceptance criteria
 
-- [ ] The guard uses the evidence-backed signal/interval; if evidence does not support a safe interval, implementation remains blocked rather than inventing one.
-- [ ] A confirmed stall triggers one fresh open, while normal buffering, actual playback, pause/stop, and source supersession do not.
-- [ ] Tests cover startup coverage, timeout behavior, cancellation, and stale-source protection.
-- [ ] `./gradlew test` and `./gradlew :app:assembleDebug` pass.
+- [x] The guard uses the evidence-backed position-progress signal and approximately 20-second threshold described below; if evidence does not support a safe interval, implementation remains blocked rather than inventing one.
+- [x] A confirmed stall triggers one fresh open, while normal buffering, actual playback, pause/stop, and source supersession do not.
+- [x] Tests cover startup coverage, timeout behavior, cancellation, and stale-source protection; test sources compile.
+- [ ] `./gradlew test` and `./gradlew :app:assembleDebug` pass. The debug build passed; the test run is blocked by the Robolectric artifact proxy failure recorded below.
 
 ## Implementation update — 2026-10-31
 
@@ -32,3 +32,8 @@ Recover promptly when playback is still desired but actual foreground playback h
 - Guards cancel on pause/stop, source replacement, and explicit channel switches. A source-generation mismatch or stale scheduled callback cannot reopen an older stream.
 - Unit tests cover stuck positions, continuing progress, pause, stale callbacks, and supersession.
 - **Verification remains pending:** GitHub connector writes succeeded, but this environment cannot reach GitHub via local git and has no Android SDK; `./gradlew test`, `./gradlew :app:assembleDebug`, and physical-device validation were not run. Position progress is a proxy for audible output; real device checks are required before marking this task done.
+
+## Verification update — 2026-11-21
+
+- Host SDK `:app:assembleDebug --rerun-tasks` passed (36 actionable tasks); `:app:compileDebugUnitTestKotlin` passed.
+- `test --rerun-tasks` is blocked before test execution because the proxy returns HTTP 403 for Robolectric's 151 MB `nativeruntime-dist-compat:1.0.18` artifact redirect. The Android 16 emulator lacks KVM acceleration and repeatedly ANRs, so it cannot validate playback liveness or audibility. The source-level recovery tests remain the available evidence; run them and the physical-device task on a capable host.
