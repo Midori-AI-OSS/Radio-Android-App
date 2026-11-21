@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - midoriaiagents/ginger-acdda906fc
 
 jobs:
   test:
@@ -22,6 +23,8 @@ jobs:
 
       - name: Set up Android SDK tools
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Install Android SDK packages
         run: |
@@ -35,6 +38,9 @@ jobs:
     name: Build debug APK
     runs-on: ubuntu-latest
     needs: test
+    outputs:
+      artifact_url: ${{ steps.upload.outputs.artifact-url }}
+      artifact_name: ${{ steps.artifact_meta.outputs.artifact_name }}
     env:
       CI_VERSION_CODE: ${{ github.event.pull_request.number }}
       CI_VERSION_NAME: 0.1.0-pr.${{ github.event.pull_request.number }}
@@ -51,6 +57,8 @@ jobs:
 
       - name: Set up Android SDK tools
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Install Android SDK packages
         run: |
@@ -68,8 +76,85 @@ jobs:
           echo "artifact_name=${artifact_name}" >> "${GITHUB_OUTPUT}"
 
       - name: Upload APK artifact
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.artifact_meta.outputs.artifact_name }}
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+  publish_apk:
+    name: Comment with latest test APK
+    needs: build
+    # Fork PR workflows have a read-only token. The workflow_run companion handles
+    # those after it is present on main. Never grant write access to build/test jobs.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Publish or update APK download comment
+        uses: actions/github-script@v8
+        env:
+          APK_ARTIFACT_URL: ${{ needs.build.outputs.artifact_url }}
+          APK_ARTIFACT_NAME: ${{ needs.build.outputs.artifact_name }}
+          APK_RUN_NUMBER: ${{ github.run_number }}
+          APK_RUN_ATTEMPT: ${{ github.run_attempt }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const prNumber = context.payload.pull_request.number;
+            const headSha = context.payload.pull_request.head.sha;
+            const artifactUrl = process.env.APK_ARTIFACT_URL;
+            const runNumber = Number(process.env.APK_RUN_NUMBER);
+            const runAttempt = Number(process.env.APK_RUN_ATTEMPT);
+            if (!artifactUrl?.startsWith(`https://github.com/${owner}/${repo}/actions/runs/`)) {
+              core.setFailed('Successful APK upload did not produce a valid artifact URL.');
+              return;
+            }
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner, repo, pull_number: prNumber,
+            });
+            if (pr.state !== 'open' || pr.head.sha !== headSha) {
+              core.info('PR was closed or updated since this APK was built; skip stale comment.');
+              return;
+            }
+
+            const marker = '<!-- midoriai-pr-apk-download -->';
+            const orderMarker = `<!-- midoriai-pr-apk-run:${runNumber}:${runAttempt} -->`;
+            const body = [
+              marker,
+              orderMarker,
+              '### Android test APK',
+              `**[Download latest test APK (ZIP)](${artifactUrl})**`,
+              `PR #${prNumber}, source commit \`${headSha.slice(0, 8)}\`. Artifact: \`${process.env.APK_ARTIFACT_NAME}\`.`,
+              'Extract `app-debug.apk` from the ZIP and install it on your Android device.',
+              '_GitHub sign-in may be required. Artifacts expire according to repository retention settings._',
+            ].join('\n\n');
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: prNumber, per_page: 100,
+            });
+            const existing = comments.find(comment =>
+              comment.user?.login === 'github-actions[bot]' &&
+              comment.body?.includes(marker)
+            );
+            if (existing) {
+              const previous = existing.body.match(/<!-- midoriai-pr-apk-run:(\d+):(\d+) -->/);
+              if (previous) {
+                const [oldRun, oldAttempt] = previous.slice(1).map(Number);
+                if (oldRun > runNumber || (oldRun === runNumber && oldAttempt > runAttempt)) {
+                  core.info('A newer APK run has already updated the PR comment.');
+                  return;
+                }
+              }
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: prNumber, body,
+              });
+            }

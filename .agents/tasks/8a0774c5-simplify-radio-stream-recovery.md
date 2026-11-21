@@ -1,11 +1,22 @@
-# [TASK] Fix silent radio playback by simplifying finite-stream recovery
+# [TASK] Foreground audio reliability fix — decomposed
 
-- Status: ready
+- Status: decomposed
 - Priority: high
 - Source: user-reported Android playback regression investigated across `Radio-Android-App`, `website-blog`, and `Cookie-Club-Bots`
-- Owner: coder
+- Owner: taskmaster
 - Related task: `.agents/tasks/wip/dcaae75d-verify-phone-playback.md`
 - Created: 2026-08-17
+
+## Active work items
+
+- `.agents/tasks/wip/2641ed31-verify-stream-and-stall-recovery-evidence.md`
+- `.agents/tasks/wip/e5bc5a42-centralize-foreground-stream-opening.md`
+- `.agents/tasks/wip/72398e06-separate-eof-and-error-recovery.md`
+- `.agents/tasks/wip/dd9c189c-add-evidence-based-stall-recovery.md`
+- `.agents/tasks/wip/a0e00f8c-keep-metadata-refresh-source-neutral.md`
+- `.agents/tasks/wip/5a84a5c1-verify-foreground-audio-recovery-on-device.md`
+
+The execution plan below is retained as historical context, not as the active task specification. In particular, per-track EOF semantics and watchdog timing are not settled assumptions: follow the evidence task and the linked work items before implementing recovery.
 
 ## Goal
 

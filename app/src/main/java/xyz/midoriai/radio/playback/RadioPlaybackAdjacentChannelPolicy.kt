@@ -20,6 +20,24 @@ internal fun resolveAdjacentChannelSelection(
     return normalizedAvailableChannels[targetIndex]
 }
 
+/** Resolves an adjacent MediaSession selection from the newest pending target, if any. */
+internal fun dispatchAdjacentChannelSelection(
+    selectedChannel: String,
+    pendingChannelSelection: String?,
+    availableChannels: List<String>,
+    direction: Int,
+    selectChannel: (String) -> Unit,
+): String? {
+    val adjacentChannel = resolveAdjacentChannelSelection(
+        selectedChannel = pendingChannelSelection ?: selectedChannel,
+        availableChannels = availableChannels,
+        direction = direction,
+    ) ?: return null
+
+    selectChannel(adjacentChannel)
+    return adjacentChannel
+}
+
 private fun positiveFloorMod(value: Int, modulus: Int): Int {
     if (modulus <= 0) {
         return 0
