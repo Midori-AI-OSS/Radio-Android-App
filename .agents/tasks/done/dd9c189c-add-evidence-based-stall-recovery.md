@@ -1,6 +1,6 @@
 # [TASK] Recover stalled desired foreground playback
 
-- Status: in-progress (implementation present; verification blocked-by-environment)
+- Status: done (verified in GitHub Actions)
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
@@ -24,7 +24,7 @@ Recover promptly when playback is still desired but actual foreground playback h
 - [x] The guard uses the evidence-backed position-progress signal and approximately 20-second threshold described below; if evidence does not support a safe interval, implementation remains blocked rather than inventing one.
 - [x] A confirmed stall triggers one fresh open, while normal buffering, actual playback, pause/stop, and source supersession do not.
 - [x] Tests cover startup coverage, timeout behavior, cancellation, and stale-source protection; test sources compile.
-- [ ] `./gradlew test` and `./gradlew :app:assembleDebug` pass. The debug build passed; the test run is blocked by the Robolectric artifact proxy failure recorded below.
+- [x] `./gradlew test` and `./gradlew :app:assembleDebug` pass in GitHub Actions workflow run `44904975704` (PR #18).
 
 ## Implementation update — 2026-10-31
 
@@ -36,4 +36,5 @@ Recover promptly when playback is still desired but actual foreground playback h
 ## Verification update — 2026-11-21
 
 - Host SDK `:app:assembleDebug --rerun-tasks` passed (36 actionable tasks); `:app:compileDebugUnitTestKotlin` passed.
-- `test --rerun-tasks` is blocked before test execution because the proxy returns HTTP 403 for Robolectric's 151 MB `nativeruntime-dist-compat:1.0.18` artifact redirect. The Android 16 emulator lacks KVM acceleration and repeatedly ANRs, so it cannot validate playback liveness or audibility. The source-level recovery tests remain the available evidence; run them and the physical-device task on a capable host.
+- Local `test --rerun-tasks` is blocked before test execution because the proxy returns HTTP 403 for the Robolectric `nativeruntime-dist-compat:1.0.18` artifact redirect; `:app:compileDebugUnitTestKotlin` and `:app:assembleDebug --rerun-tasks` pass locally. The complete GitHub Actions unit-test job and debug APK build passed in workflow run `44904975704` (PR #18).
+- The Android 16 emulator lacks KVM acceleration and repeatedly ANRs, so it cannot validate playback liveness or audibility. Physical-device checks remain in `.agents/tasks/wip/5a84a5c1-verify-foreground-audio-recovery-on-device.md`.

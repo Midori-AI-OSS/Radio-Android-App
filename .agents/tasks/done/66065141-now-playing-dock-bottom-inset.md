@@ -1,6 +1,6 @@
 # [FIX] Remove duplicate bottom navigation inset from Now Playing dock
 
-- Status: implemented, verification blocked-by-environment
+- Status: done (verified in GitHub Actions)
 - Source: agreed Now Playing dock sizing correction
 - Owner: coder
 
@@ -26,7 +26,5 @@ vertical), button sizes (56/68/56/48.dp), icon sizes (30/38/30/24.dp), and 18.dp
 ## Verification update — 2026-11-21
 
 - `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk ./gradlew :app:assembleDebug --rerun-tasks` — PASS (36 actionable tasks).
-- `./gradlew test --rerun-tasks` — BLOCKED before test execution: the environment proxy returns HTTP 403 when Maven Central redirects Robolectric's `nativeruntime-dist-compat:1.0.18` JAR to `gcp.mirrors.maven.org`.
+- `./gradlew test --rerun-tasks` — BLOCKED locally before test execution by the environment proxy's HTTP 403 on a Robolectric artifact redirect; the complete GitHub Actions unit-test job and debug APK build passed in workflow run `44904975704` (PR #18).
 - Static search still finds no `navigationBarsPadding` references in `app/src/`.
-
-Keep verification open until the standard unit-test task runs successfully on a host that can fetch Robolectric's runtime dependencies.

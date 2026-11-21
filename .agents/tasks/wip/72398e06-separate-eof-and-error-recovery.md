@@ -1,6 +1,6 @@
 # [TASK] Separate normal stream-end and player-error recovery
 
-- Status: in-progress (service integration criterion and current test execution remain)
+- Status: in-progress (service integration criterion remains)
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
@@ -27,7 +27,7 @@ Handle normal stream completion and actual player failures as distinct causes, w
 - [x] Player errors and every retryable failed open use the canonical opener and retry indefinitely with delay capped at `1500 ms`; stale retries cannot override a newer source. `Rejected` opens do not retry.
 - [ ] Add an integration test that starts `RadioPlaybackService` and exercises its actual player-listener registration and service selection/stop callbacks for EOF duplicate admission, player-error queuing, restored-source READY, pause/stop, and newer-selection cancellation. Existing tests exercise `RadioPlaybackPlayerEventListener` and `RadioPlaybackRecoveryController` separately, but do not execute the service's listener registration/callback wiring.
 - [x] Cancellation exceptions propagate through the installer/open path and do not become retryable `Failed` results; rollback/failure side effects on cancellation are explicitly tested.
-- [x] `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk ./gradlew test --rerun-tasks` and `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk ./gradlew :app:assembleDebug --rerun-tasks` pass (fresh rerun 2026-10-25; 24 and 36 actionable tasks executed, respectively).
+- [x] `./gradlew test` and `./gradlew :app:assembleDebug` pass in GitHub Actions workflow run `44904975704` (PR #18); the earlier fresh host rerun on 2026-10-25 also passed.
 - [x] Device Media3 `Player` behavior at finite-response EOF is explicitly recorded as `BLOCKED — unverified`, with no runtime-success claim and follow-up in the separate device-verification task.
 
 ## Current implementation snapshot
@@ -39,7 +39,7 @@ Handle normal stream completion and actual player failures as distinct causes, w
 - `FreshStreamPlayerInstaller` rollback is exercised through the production `openFreshStreamPlayerSource` path with `CancellationException`: player/service cleanup runs, the exact cancellation propagates, no retryable result is produced, and open admission is released.
 - Terminal stale-event admission uses installed-source object identity. The unused source generation field was removed and stale-source events are tested. The repeated-event assertion does not directly test the same-source duplicate guard: the first open installs a new source, so the later callback is rejected as stale instead.
 - Finite-body evidence is available through the pinned historical report at commit `cee9787f9fb163cdab11ead8041de1486f2308fa`, path `.agents/tasks/taskmaster/2641ed31-verify-stream-and-stall-recovery-evidence.md` (`git show cee9787f9fb163cdab11ead8041de1486f2308fa:.agents/tasks/taskmaster/2641ed31-verify-stream-and-stall-recovery-evidence.md`); that report is not present in the current task tree. The 2026-10-24 deployed sample completed normally after 1,032,600 bytes and `ffprobe` measured 85.920 seconds of `Chill Mix`; server revision remained unknown. Device Media3 `Player` EOF boundary: `BLOCKED — unverified`; follow-up is `.agents/tasks/wip/5a84a5c1-verify-foreground-audio-recovery-on-device.md`.
-- Stall timeout: not selected; deferred to `dd9c189c-add-evidence-based-stall-recovery.md`.
+- Stall guard evidence and the position-progress interval are implemented and archived in `.agents/tasks/done/dd9c189c-add-evidence-based-stall-recovery.md`; physical-device verification remains separate.
 - `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk ./gradlew test --rerun-tasks`: PASS on host SDK (fresh completion rerun 2026-10-25; 24 actionable tasks executed).
 - `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk ./gradlew :app:assembleDebug --rerun-tasks`: PASS on host SDK (fresh completion rerun 2026-10-25; 36 actionable tasks executed).
 - Dockerized verification remains blocked: fresh `docker info` reports permission denied connecting to `/var/run/docker.sock`.
@@ -64,4 +64,4 @@ Handle normal stream completion and actual player failures as distinct causes, w
 
 - Existing tests now cover the production listener/controller seam for immediate EOF plus duplicate suppression, `onPlayerError` retrying through the canonical opener, pause/stop cancellation, explicit-selection supersession, and prior-source READY not cancelling the requested retry. In particular, `productionListener_repeatedTerminalStateDoesNotReopenUnchangedSource` leaves the installed source unchanged across the second EOF callback, so it does test same-source duplicate admission.
 - The unchecked integration criterion remains open because these tests do not instantiate `RadioPlaybackService` and verify its actual ExoPlayer listener registration and service callback wiring.
-- `:app:compileDebugUnitTestKotlin` and `:app:assembleDebug --rerun-tasks` pass. Test execution is blocked by the Robolectric Maven artifact proxy failure recorded in `a0e00f8c`; no automated test result is claimed for this run.
+- The local host's `test --rerun-tasks` remains blocked by the Robolectric Maven artifact proxy failure recorded in `.agents/tasks/done/a0e00f8c-keep-metadata-refresh-source-neutral.md`; `:app:compileDebugUnitTestKotlin` and `:app:assembleDebug --rerun-tasks` pass locally. The complete GitHub Actions unit-test job and debug APK build passed in workflow run `44904975704` (PR #18).
