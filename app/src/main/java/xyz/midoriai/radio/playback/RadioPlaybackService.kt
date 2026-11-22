@@ -628,7 +628,7 @@ open class RadioPlaybackService : MediaLibraryService() {
                     _playbackState.value = RadioPlaybackState.Connecting
                     syncPlayerPlaylist(
                         channel,
-                        forceRebuild = lastPlaylistQuality != quality,
+                        forceRebuild = true,
                         refreshMetadata = false,
                     )
                     if (player.playbackState == Player.STATE_ENDED) {
