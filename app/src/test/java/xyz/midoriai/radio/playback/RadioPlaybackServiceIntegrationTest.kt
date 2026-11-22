@@ -1,5 +1,8 @@
 package xyz.midoriai.radio.playback
 
+import android.content.Context
+import android.content.Context
+import android.content.res.Resources
 import android.os.Looper
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -23,6 +26,7 @@ import androidx.test.core.app.ApplicationProvider
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -33,17 +37,19 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
+import xyz.midoriai.radio.R
 import xyz.midoriai.radio.radioapi.ArtPayload
 import xyz.midoriai.radio.radioapi.ChannelsPayload
 import xyz.midoriai.radio.radioapi.CurrentPayload
 import xyz.midoriai.radio.radioapi.HealthPayload
 import xyz.midoriai.radio.radioapi.RadioApi
 import xyz.midoriai.radio.radioapi.RadioApiResult
+import xyz.midoriai.radio.settings.RadioSettingsRepository
 import xyz.midoriai.radio.ui.screens.nowplaying.RadioPlaybackState
 
 @UnstableApi
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@Config(sdk = [35], manifest = "AndroidManifest.xml")
 @LooperMode(LooperMode.Mode.PAUSED)
 class RadioPlaybackServiceIntegrationTest {
     private lateinit var player: RecordingExoPlayer
@@ -54,13 +60,22 @@ class RadioPlaybackServiceIntegrationTest {
 
     @Before
     fun setUp() {
+        runBlocking {
+            RadioSettingsRepository(
+                ApplicationProvider.getApplicationContext<Context>(),
+            ).apply {
+                setChannel("all")
+                setQuality("medium")
+            }
+        }
+
         player = RecordingExoPlayer()
         RadioPlaybackServiceIntegrationHarness.player = player
         serviceController = Robolectric
             .buildService(RadioPlaybackServiceIntegrationHarness::class.java)
             .create()
         service = checkNotNull(serviceController).get()
-        drainMainLooper()
+        awaitInitialSettings()
 
         val session = checkNotNull(service.connectedSession)
         controllerFuture = MediaController.Builder(
@@ -81,6 +96,8 @@ class RadioPlaybackServiceIntegrationTest {
 
     @Test
     fun registeredServiceListener_reopensEndedSourceOnce() {
+        controller.setMediaItem(MediaItem.Builder().setMediaId("all").build())
+        drainMainLooper()
         controller.play()
         drainMainLooper()
         player.emitState(Player.STATE_READY, isPlaying = true)
@@ -95,7 +112,11 @@ class RadioPlaybackServiceIntegrationTest {
         player.emitState(Player.STATE_ENDED)
         drainMainLooper()
 
-        assertEquals(preparesBeforeEnd + 1, player.prepareCount)
+        assertEquals(
+            "registered service listener should reopen EOF immediately",
+            preparesBeforeEnd + 1,
+            player.prepareCount,
+        )
         assertEquals(Player.STATE_BUFFERING, player.playbackState)
 
         // A delayed duplicate callback can arrive after the replacement source is installed.
@@ -112,9 +133,10 @@ class RadioPlaybackServiceIntegrationTest {
         drainMainLooper()
         assertEquals(RadioPlaybackState.Reconnecting(1, 50L), snapshot().playbackState)
 
+        offerChannel("focus")
         player.failNextMediaItemId = "focus"
         runCatching {
-            controller.setMediaItem(MediaItem.Builder().setMediaId("focus").build())
+            controller.setMediaItem(MediaItem.Builder().setMediaId(toBrowseChannelMediaId("focus")).build())
         }
         drainMainLooper()
         assertEquals("all", player.mediaItem?.mediaId)
@@ -168,8 +190,9 @@ class RadioPlaybackServiceIntegrationTest {
         drainMainLooper()
         assertEquals(RadioPlaybackState.Reconnecting(1, 50L), snapshot().playbackState)
 
+        offerChannel("focus")
         val preparesBeforeSelection = player.prepareCount
-        controller.setMediaItem(MediaItem.Builder().setMediaId("focus").build())
+        controller.setMediaItem(MediaItem.Builder().setMediaId(toBrowseChannelMediaId("focus")).build())
         drainMainLooper()
         assertEquals("focus", player.mediaItem?.mediaId)
         assertEquals(preparesBeforeSelection + 1, player.prepareCount)
@@ -201,6 +224,34 @@ class RadioPlaybackServiceIntegrationTest {
     private fun idleMainLooper(delayMs: Long) {
         shadowOf(Looper.getMainLooper()).idleFor(delayMs, TimeUnit.MILLISECONDS)
     }
+
+    private fun awaitInitialSettings() {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
+        while (
+            (serviceField("lastObservedChannel") == null ||
+                serviceField("lastObservedQuality") == null) &&
+            System.nanoTime() < deadline
+        ) {
+            drainMainLooper()
+            Thread.sleep(10L)
+        }
+        drainMainLooper()
+        assertEquals("all", serviceField("lastObservedChannel"))
+        assertEquals("medium", serviceField("lastObservedQuality"))
+    }
+
+    private fun serviceField(name: String): Any? {
+        val field = RadioPlaybackService::class.java.getDeclaredField(name)
+        field.isAccessible = true
+        return field.get(service)
+    }
+
+    private fun offerChannel(channel: String) {
+        @Suppress("UNCHECKED_CAST")
+        val flow = serviceField("_channels") as kotlinx.coroutines.flow.MutableStateFlow<List<String>>
+        flow.value = flow.value + channel
+        drainMainLooper()
+    }
 }
 
 @UnstableApi
@@ -211,6 +262,22 @@ internal class RadioPlaybackServiceIntegrationHarness : RadioPlaybackService() {
 
     var connectedSession: MediaLibrarySession? = null
         private set
+
+    @Suppress("DEPRECATION")
+    override fun getResources(): Resources {
+        val baseResources = super.getResources()
+        return object : Resources(
+            baseResources.assets,
+            baseResources.displayMetrics,
+            baseResources.configuration,
+        ) {
+            override fun getText(id: Int): CharSequence = when (id) {
+                R.string.app_name -> "Radio"
+                R.string.auto_browse_root_subtitle -> "Live radio"
+                else -> baseResources.getText(id)
+            }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()

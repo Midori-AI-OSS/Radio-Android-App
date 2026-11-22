@@ -1,6 +1,6 @@
 # [TASK] Foreground audio reliability fix — decomposed
 
-- Status: decomposed
+- Status: blocked-by-environment (physical-device verification remains)
 - Priority: high
 - Source: user-reported Android playback regression investigated across `Radio-Android-App`, `website-blog`, and `Cookie-Club-Bots`
 - Owner: taskmaster
@@ -9,12 +9,11 @@
 
 ## Active work items
 
-- `.agents/tasks/wip/72398e06-separate-eof-and-error-recovery.md`
 - `.agents/tasks/wip/5a84a5c1-verify-foreground-audio-recovery-on-device.md`
 
 The earlier evidence and canonical-opener work items are not present in the current task tree. Their recorded evidence is referenced from the EOF task's historical commit note; the implementation is present in `RadioPlaybackService` and playback policy classes.
 
-Completed implementation work: `.agents/tasks/done/a0e00f8c-keep-metadata-refresh-source-neutral.md` and `.agents/tasks/done/dd9c189c-add-evidence-based-stall-recovery.md`.
+Completed implementation work: `.agents/tasks/done/a0e00f8c-keep-metadata-refresh-source-neutral.md`, `.agents/tasks/done/dd9c189c-add-evidence-based-stall-recovery.md`, and `.agents/tasks/done/72398e06-separate-eof-and-error-recovery.md`.
 
 The execution plan below is retained as historical context, not as the active task specification. In particular, per-track EOF semantics and watchdog timing are not settled assumptions: follow the evidence task and the linked work items before implementing recovery.
 
