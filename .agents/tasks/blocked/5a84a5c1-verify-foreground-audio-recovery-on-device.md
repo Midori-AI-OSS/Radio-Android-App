@@ -4,9 +4,9 @@
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder (device required)
-- Parent: `.agents/tasks/8a0774c5-simplify-radio-stream-recovery.md`
+- Parent: `.agents/tasks/blocked/8a0774c5-simplify-radio-stream-recovery.md`
 - Depends on: `e5bc5a42-centralize-foreground-stream-opening.md`, `72398e06-separate-eof-and-error-recovery.md`, `dd9c189c-add-evidence-based-stall-recovery.md`, `a0e00f8c-keep-metadata-refresh-source-neutral.md`
-- Related: `.agents/tasks/wip/dcaae75d-verify-phone-playback.md`
+- Related: `.agents/tasks/blocked/dcaae75d-verify-phone-playback.md`
 
 ## Goal
 

@@ -4,7 +4,7 @@
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
-- Parent: `.agents/tasks/8a0774c5-simplify-radio-stream-recovery.md`
+- Parent: `.agents/tasks/blocked/8a0774c5-simplify-radio-stream-recovery.md`
 
 ## Goal
 

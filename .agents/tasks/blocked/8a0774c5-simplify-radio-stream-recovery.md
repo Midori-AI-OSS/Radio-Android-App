@@ -4,12 +4,12 @@
 - Priority: high
 - Source: user-reported Android playback regression investigated across `Radio-Android-App`, `website-blog`, and `Cookie-Club-Bots`
 - Owner: taskmaster
-- Related task: `.agents/tasks/wip/dcaae75d-verify-phone-playback.md`
+- Related task: `.agents/tasks/blocked/dcaae75d-verify-phone-playback.md`
 - Created: 2026-08-17
 
-## Active work items
+## Blocked work items
 
-- `.agents/tasks/wip/5a84a5c1-verify-foreground-audio-recovery-on-device.md`
+- `.agents/tasks/blocked/5a84a5c1-verify-foreground-audio-recovery-on-device.md`
 
 The earlier evidence and canonical-opener work items are not present in the current task tree. Their recorded evidence is referenced from the EOF task's historical commit note; the implementation is present in `RadioPlaybackService` and playback policy classes.
 
@@ -380,7 +380,7 @@ If an Android device + adb are available, install the debug APK and record the d
 9. **Background/session metadata:** while audio continues, background/lock the app long enough to observe at least one metadata change. Session/notification metadata may update without disrupting audio.
 10. **No reconnect storm:** observe logs/network behavior around EOF and recovery. One EOF should produce one fresh stream connection, not repeated overlapping connects.
 
-Use `.agents/tasks/wip/dcaae75d-verify-phone-playback.md` as the existing device-verification record. If you have a suitable device, update that task's blocked results with the new real pass/fail evidence rather than creating a second contradictory phone-verification record.
+Use `.agents/tasks/blocked/dcaae75d-verify-phone-playback.md` as the existing device-verification record. If you have a suitable device, update that task's blocked results with the new real pass/fail evidence rather than creating a second contradictory phone-verification record.
 
 If no suitable Android device/adb exists in the execution environment:
 

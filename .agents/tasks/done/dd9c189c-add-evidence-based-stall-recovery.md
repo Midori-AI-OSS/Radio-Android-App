@@ -4,7 +4,7 @@
 - Priority: high
 - Source: approved foreground audio reliability fix
 - Owner: coder
-- Parent: `.agents/tasks/8a0774c5-simplify-radio-stream-recovery.md`
+- Parent: `.agents/tasks/blocked/8a0774c5-simplify-radio-stream-recovery.md`
 - Depends on: `2641ed31-verify-stream-and-stall-recovery-evidence.md`, `e5bc5a42-centralize-foreground-stream-opening.md`
 
 ## Goal
@@ -37,4 +37,4 @@ Recover promptly when playback is still desired but actual foreground playback h
 
 - Host SDK `:app:assembleDebug --rerun-tasks` passed (36 actionable tasks); `:app:compileDebugUnitTestKotlin` passed.
 - Local `test --rerun-tasks` is blocked before test execution because the proxy returns HTTP 403 for the Robolectric `nativeruntime-dist-compat:1.0.18` artifact redirect; `:app:compileDebugUnitTestKotlin` and `:app:assembleDebug --rerun-tasks` pass locally. The complete GitHub Actions unit-test job and debug APK build passed in workflow run `44904975704` (PR #18).
-- The Android 16 emulator lacks KVM acceleration and repeatedly ANRs, so it cannot validate playback liveness or audibility. Physical-device checks remain in `.agents/tasks/wip/5a84a5c1-verify-foreground-audio-recovery-on-device.md`.
+- The Android 16 emulator lacks KVM acceleration and repeatedly ANRs, so it cannot validate playback liveness or audibility. Physical-device checks remain in `.agents/tasks/blocked/5a84a5c1-verify-foreground-audio-recovery-on-device.md`.

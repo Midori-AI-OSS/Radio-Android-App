@@ -41,7 +41,7 @@ environment.
 
 ## Taskmaster resolution (2026-08-15)
 
-Blocked by environment; stays in `.agents/tasks/wip/` as actionable for a device host.
+Blocked by environment; stays in `.agents/tasks/blocked/` as actionable for a device host.
 Dependency dcaae75d (T7) must be unblocked first, since this task reuses the same sideloaded
 T6 debug APK on the same device.
 
