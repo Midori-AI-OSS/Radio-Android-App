@@ -48,7 +48,7 @@ import xyz.midoriai.radio.settings.RadioSettingsRepository
 import xyz.midoriai.radio.ui.screens.nowplaying.RadioPlaybackState
 
 @UnstableApi
-class RadioPlaybackService : MediaLibraryService() {
+open class RadioPlaybackService : MediaLibraryService() {
     private val playingMetadataPollIntervalMs = 5000L
     private val idleMetadataPollIntervalMs = 20000L
     private val channelRefreshIntervalMs = 60000L
@@ -58,38 +58,40 @@ class RadioPlaybackService : MediaLibraryService() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val settingsRepository by lazy { RadioSettingsRepository(applicationContext) }
-    private val api: RadioApi = OkHttpRadioApi()
+    private val api: RadioApi by lazy(::createRadioApi)
 
     private val isDebugBuild: Boolean by lazy {
         (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
     }
 
     private val player: ExoPlayer by lazy {
-        ExoPlayer.Builder(this)
-            .build()
-            .also { exo ->
-                exo.setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                        .setUsage(C.USAGE_MEDIA)
-                        .build(),
-                    true,
-                )
-                exo.repeatMode = Player.REPEAT_MODE_OFF
-                exo.volume = playerVolumeNormal
-                exo.setHandleAudioBecomingNoisy(true)
-                exo.addListener(
-                    RadioPlaybackPlayerEventListener(
-                        playbackDesired = { playbackDesired },
-                        currentPlaybackState = { exo.playbackState },
-                        onPlayerFailure = ::handlePlayerError,
-                        onPlaybackState = { recoveryController.onPlaybackStateChanged(it) },
-                        onStopped = ::handlePlayerStopped,
-                        onMediaItem = ::handleMediaItemTransition,
-                    ),
-                )
-            }
+        createExoPlayer().also { exo ->
+            exo.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .setUsage(C.USAGE_MEDIA)
+                    .build(),
+                true,
+            )
+            exo.repeatMode = Player.REPEAT_MODE_OFF
+            exo.volume = playerVolumeNormal
+            exo.setHandleAudioBecomingNoisy(true)
+            exo.addListener(
+                RadioPlaybackPlayerEventListener(
+                    playbackDesired = { playbackDesired },
+                    currentPlaybackState = { exo.playbackState },
+                    onPlayerFailure = ::handlePlayerError,
+                    onPlaybackState = { recoveryController.onPlaybackStateChanged(it) },
+                    onStopped = ::handlePlayerStopped,
+                    onMediaItem = ::handleMediaItemTransition,
+                ),
+            )
+        }
     }
+
+    internal open fun createExoPlayer(): ExoPlayer = ExoPlayer.Builder(this).build()
+
+    internal open fun createRadioApi(): RadioApi = OkHttpRadioApi()
 
     private val sessionPlayer: RadioSessionPlayer by lazy {
         mediaSessionStreamOpening.wrapPlayer(
@@ -626,7 +628,7 @@ class RadioPlaybackService : MediaLibraryService() {
                     _playbackState.value = RadioPlaybackState.Connecting
                     syncPlayerPlaylist(
                         channel,
-                        forceRebuild = lastPlaylistQuality != quality,
+                        forceRebuild = true,
                         refreshMetadata = false,
                     )
                     if (player.playbackState == Player.STATE_ENDED) {

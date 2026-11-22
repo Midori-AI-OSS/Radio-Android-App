@@ -41,7 +41,7 @@ environment.
 
 ## Taskmaster resolution (2026-08-15)
 
-Blocked by environment; stays in `.agents/tasks/wip/` as actionable for a device host.
+Blocked by environment; stays in `.agents/tasks/blocked/` as actionable for a device host.
 Dependency dcaae75d (T7) must be unblocked first, since this task reuses the same sideloaded
 T6 debug APK on the same device.
 
@@ -54,3 +54,11 @@ T6 debug APK on the same device.
 4. Capture `adb logcat` during discovery and check for MediaLibraryService/MediaSessionService/
    legacy MediaBrowserService errors; document any failure with logcat evidence and a new task file.
 5. With all checks passing, set `Status: done` and archive to `.agents/tasks/done/`.
+
+## Environment update — 2026-11-21
+
+Android SDK/adb and an API 36 x86_64 AVD are now available, superseding the 2026-08-15 SDK/adb absence for this run. There is still no physical test phone, Android Auto head unit, or DHU session. The software-emulated AVD is not a head unit and produced repeated Android system ANRs; no discovery, browse, playback, or Android Auto logcat check was run. Acceptance remains BLOCKED until the phone verification and a head-unit/DHU run are available.
+
+## Environment update — 2026-11-22
+
+The current debug APK installed on the API 36 AVD, but `am start` failed with `Failure calling service activity: Broken pipe (32)` while the software-emulated system server was stalled. The launcher stayed top-resumed and the screen capture was black. No Android Auto app session, head unit, or DHU was available; discovery and browse/playback checks remain BLOCKED.

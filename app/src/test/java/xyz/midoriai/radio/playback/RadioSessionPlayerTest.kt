@@ -1,5 +1,7 @@
 package xyz.midoriai.radio.playback
 
+import android.net.Uri
+import android.os.Bundle
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -53,18 +55,29 @@ class RadioSessionPlayerTest {
 
     @Test
     fun sessionMetadataPublishesWithoutMutatingOrPreparingTheAudioSource() {
+        val existingExtras = Bundle().apply { putString("session-origin", "station") }
         val original = MediaItem.Builder()
             .setMediaId("focus")
             .setUri("https://radio.example/focus/high")
-            .setMediaMetadata(MediaMetadata.Builder().setTitle("Old track").build())
+            .setTag("station-source")
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle("Old track")
+                    .setAlbumTitle("Station album")
+                    .setGenre("Ambient")
+                    .setIsPlayable(true)
+                    .setExtras(existingExtras)
+                    .build(),
+            )
             .build()
         val state = FakePlayerState(currentMediaItem = original)
+        var streamOpenRequests = 0
         val sessionPlayer = RadioSessionPlayer(
             player = fakePlayer(state = state),
             onPlay = {},
             onPause = {},
             onSelectAdjacentChannel = {},
-            onSetMediaItems = {},
+            onSetMediaItems = { streamOpenRequests += 1 },
         )
         var receivedTitle: CharSequence? = null
         var metadataEvents = 0
@@ -77,22 +90,37 @@ class RadioSessionPlayerTest {
             }
         })
 
-        val metadata = original.mediaMetadata.buildUpon()
+        val metadata = MediaMetadata.Builder()
             .setTitle("New track")
             .setDisplayTitle("New track")
             .setArtist("Focus")
+            .setArtworkUri(Uri.parse("https://radio.example/art/current.jpg"))
             .build()
         sessionPlayer.publishPresentationMetadata(metadata)
         sessionPlayer.publishPresentationMetadata(metadata)
 
-        assertEquals("New track", sessionPlayer.currentMediaItem?.mediaMetadata?.title)
+        val publishedItem = checkNotNull(sessionPlayer.currentMediaItem)
+        val publishedMetadata = publishedItem.mediaMetadata
+        assertEquals("New track", publishedMetadata.title)
+        assertEquals("New track", publishedMetadata.displayTitle)
+        assertEquals("Focus", publishedMetadata.artist)
+        assertEquals(Uri.parse("https://radio.example/art/current.jpg"), publishedMetadata.artworkUri)
+        assertEquals("Station album", publishedMetadata.albumTitle)
+        assertEquals("Ambient", publishedMetadata.genre)
+        assertTrue(publishedMetadata.isPlayable == true)
+        assertEquals("station", publishedMetadata.extras?.getString("session-origin"))
         assertEquals("New track", sessionPlayer.mediaMetadata.title)
         assertEquals("New track", receivedTitle)
         assertEquals(1, metadataEvents)
+        assertEquals(original.mediaId, publishedItem.mediaId)
+        assertEquals(original.localConfiguration, publishedItem.localConfiguration)
+        assertEquals(original.localConfiguration?.uri, publishedItem.localConfiguration?.uri)
         assertEquals(original, state.currentMediaItem)
         assertEquals("https://radio.example/focus/high", state.currentMediaItem?.localConfiguration?.uri.toString())
+        assertEquals(0, streamOpenRequests)
         assertEquals(0, state.setMediaItemCalls)
         assertEquals(0, state.prepareCalls)
+        assertEquals(0, state.seekCalls)
     }
 
     @Test
@@ -429,6 +457,7 @@ class RadioSessionPlayerTest {
         var volume: Float = 1f,
         var setMediaItemCalls: Int = 0,
         var prepareCalls: Int = 0,
+        var seekCalls: Int = 0,
     )
 
     private fun fakePlayer(
@@ -468,6 +497,10 @@ class RadioSessionPlayerTest {
                 "prepare" -> {
                     state?.let { it.prepareCalls += 1 }
                     onPrepare()
+                }
+                "seekTo", "seekToDefaultPosition", "seekToNext", "seekToPrevious" -> {
+                    state?.let { it.seekCalls += 1 }
+                    defaultValue(method)
                 }
                 "hashCode" -> System.identityHashCode(method)
                 "equals" -> args?.firstOrNull() === this

@@ -64,15 +64,26 @@ internal class RadioSessionPlayer(
      */
     fun publishPresentationMetadata(metadata: MediaMetadata) {
         val source = super.getCurrentMediaItem() ?: return
-        if (currentMediaItem?.mediaMetadata == metadata) return
+        val previousMetadata = if (presentationSource === source) {
+            presentationItem?.mediaMetadata
+        } else {
+            null
+        } ?: source.mediaMetadata
+        val publishedMetadata = previousMetadata.buildUpon()
+            .setTitle(metadata.title)
+            .setArtist(metadata.artist)
+            .setDisplayTitle(metadata.displayTitle)
+            .setArtworkUri(metadata.artworkUri)
+            .build()
+        if (previousMetadata == publishedMetadata) return
 
         presentationSource = source
-        presentationItem = source.buildUpon().setMediaMetadata(metadata).build()
+        presentationItem = source.buildUpon().setMediaMetadata(publishedMetadata).build()
         val changed = Player.Events(
             FlagSet.Builder().add(Player.EVENT_MEDIA_METADATA_CHANGED).build(),
         )
         sessionListeners.toList().forEach { listener ->
-            listener.onMediaMetadataChanged(metadata)
+            listener.onMediaMetadataChanged(publishedMetadata)
             listener.onEvents(this, changed)
         }
     }

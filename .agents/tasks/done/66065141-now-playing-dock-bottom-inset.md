@@ -1,6 +1,6 @@
 # [FIX] Remove duplicate bottom navigation inset from Now Playing dock
 
-- Status: implemented, verification blocked-by-environment
+- Status: done (verified in GitHub Actions)
 - Source: agreed Now Playing dock sizing correction
 - Owner: coder
 
@@ -17,12 +17,14 @@ vertical), button sizes (56/68/56/48.dp), icon sizes (30/38/30/24.dp), and 18.dp
 
 ## Verification
 
-- `./gradlew test` — BLOCKED: no Android SDK on this host (`ANDROID_HOME` unset, no
-  `local.properties`; "SDK location not found").
-- `./gradlew :app:assembleDebug` — not run; same SDK blocker.
+- Historical verification at task creation: `./gradlew test` was blocked because no Android SDK
+  was available; `:app:assembleDebug` was not run for the same reason.
 - Docker/PixelArch container — unavailable (permission denied on `/var/run/docker.sock`).
 - Static checks passed: no remaining `navigationBarsPadding` references in `app/src/`;
   the diff touches only one modifier chain plus its import.
 
-Run `./gradlew test` and `./gradlew :app:assembleDebug` in the PixelArch container (or a
-host with an Android SDK) before closing this out.
+## Verification update — 2026-11-21
+
+- `ANDROID_HOME=/tmp/agents-artifacts/android-sdk ANDROID_SDK_ROOT=/tmp/agents-artifacts/android-sdk ./gradlew :app:assembleDebug --rerun-tasks` — PASS (36 actionable tasks).
+- `./gradlew test --rerun-tasks` — BLOCKED locally before test execution by the environment proxy's HTTP 403 on a Robolectric artifact redirect; the complete GitHub Actions unit-test job and debug APK build passed in workflow run `44904975704` (PR #18).
+- Static search still finds no `navigationBarsPadding` references in `app/src/`.

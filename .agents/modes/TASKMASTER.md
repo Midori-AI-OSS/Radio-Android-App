@@ -22,6 +22,7 @@ Task Masters keep the backlog healthy. They translate product direction, feedbac
 - Draft new task files in `.agents/tasks/`.
 - Update priorities, status, or metadata on existing tasks.
 - Archive completed tasks into `.agents/tasks/done/` (or your team's equivalent) to keep the active queue focused.
+- Move tasks blocked on unavailable hardware or external prerequisites into `.agents/tasks/blocked/`; return them to `.agents/tasks/wip/` when those prerequisites are available.
 - Communicate with Coders, Managers, and Auditors to ensure requirements are understood.
 - Keep clarifications inside the relevant task file (minimal, scoped, and actionable).
 

@@ -81,7 +81,7 @@ before the acceptance criteria can be met.
 Blocked by environment: no Android device, adb, SDK, or Docker exists on this host (evidence
 above), so none of the five playback checks can be executed here. The Auditor bounce stands:
 acceptance criteria 1 and 3 remain unmet by design, not by failure. This file stays in
-`.agents/tasks/wip/` until a device host picks it up.
+`.agents/tasks/blocked/` until a device host picks it up.
 
 ### Next steps (for a coder on a host with a device)
 
@@ -94,3 +94,18 @@ acceptance criteria 1 and 3 remain unmet by design, not by failure. This file st
 5. With all checks passing, set `Status: done` and archive to `.agents/tasks/done/`.
 
 Unblocking this task unblocks T8 (d6b4fdad), which depends on it.
+
+## Environment update — 2026-11-21
+
+The earlier 2026-08-15 blocker described that host at that time. This run now has Android SDK/adb and an API 36 x86_64 AVD, but still has no attached physical Android 16 test device. The AVD ran under software TCG without `/dev/kvm`, repeatedly reported Android system ANRs, and has no PulseAudio output. The app could be installed/launched, but the emulator did not provide usable playback evidence. All five checks remain BLOCKED pending the physical phone; no device pass is inferred from the emulator or host HTTP probes.
+
+## VM attempt — 2026-11-21 (~16:50–17:00 America/Los_Angeles)
+
+- On the API 36 x86_64 TCG AVD, a local debug APK built from revision `a280bde7ba20952f63960b32103cffb5f0a785f9` plus temporary proxy-only CA trust reached MediaSession `PLAYING` after `BUFFERING`. Pause and stop each remained `NONE` after 25 seconds; resume returned to `PLAYING`. MediaSession titles changed during playback.
+- This was not the GitHub sideload path or a physical phone run. The emulator had no audio output, Android system ANRs, and MediaSession position `-1`; no audible result, internal player state, channel/quality verification, or attributable stream-open count was available. Settings persistence and network interruption were not checked.
+- Result: all five phone acceptance checks remain BLOCKED. This partial AVD observation is not a pass. The companion foreground-recovery attempt is detailed in `.agents/tasks/blocked/5a84a5c1-verify-foreground-audio-recovery-on-device.md`.
+
+## AVD attempt — 2026-11-22 (~05:00 UTC)
+
+- Installed the current `0.1.0` debug APK (`92d6e5715b0f164290ff43a1485f26b6c01c6896c166098deeee1bfcec246f0d`) on the API 36 `midori-api36` AVD. The app could not be brought to the foreground: `am start` failed with `Failure calling service activity: Broken pipe (32)`, the screenshot was black, and no app process/session appeared. The AVD runs TCG without KVM and has no audio output.
+- No phone playback, channel change, metadata/art, reconnect, or settings-persistence check ran. The existing five checks remain BLOCKED pending a physical Android device. Detailed runtime evidence is in `.agents/tasks/blocked/5a84a5c1-verify-foreground-audio-recovery-on-device.md`.

@@ -9,6 +9,7 @@ This repository is an Android app (Kotlin + Jetpack Compose) built with Gradle. 
 - **`app/src/test/`**: Unit tests.
 - **`app/build.gradle.kts` + root Gradle files**: Build/dependency configuration.
 - **`buildapk.sh` and `scripts/run-build-konsole.sh`**: Dockerized APK build/install workflow.
+- **`scripts/setup-android.sh`**: task-local JDK 17 and Android SDK setup for non-Docker builds; installs under `/tmp` by default.
 - **`.agents/modes/`**: Contributor role instructions.
 - **`UI_UX_STANDARDS.md`**: UI/UX patterns, theming, and styling conventions.
 - Additional directories may include their own `AGENTS.md`. Those files take precedence for the directory tree they reside in.
@@ -29,6 +30,7 @@ This repository is an Android app (Kotlin + Jetpack Compose) built with Gradle. 
   - PixelArch container hints:
     - Build the PixelArch image whenever it is not already available.
     - Run Gradle verification commands inside that image for consistent tooling.
+    - If Docker is unavailable, use `scripts/setup-android.sh` for the task-local host SDK.
 - Keep code, configuration, and documentation changes in sync. When you update behavior, review nearby docs for accuracy.
 - Use structured commit messages such as `[TYPE] Concise summary` and keep pull request descriptions short and outcome focused.
 - Break large efforts into reviewable commits or tasks. Reference related issues, design docs, or feedback files directly in your commits and PRs.
