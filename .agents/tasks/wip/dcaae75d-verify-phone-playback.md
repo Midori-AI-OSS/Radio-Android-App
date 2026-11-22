@@ -98,3 +98,9 @@ Unblocking this task unblocks T8 (d6b4fdad), which depends on it.
 ## Environment update — 2026-11-21
 
 The earlier 2026-08-15 blocker described that host at that time. This run now has Android SDK/adb and an API 36 x86_64 AVD, but still has no attached physical Android 16 test device. The AVD ran under software TCG without `/dev/kvm`, repeatedly reported Android system ANRs, and has no PulseAudio output. The app could be installed/launched, but the emulator did not provide usable playback evidence. All five checks remain BLOCKED pending the physical phone; no device pass is inferred from the emulator or host HTTP probes.
+
+## VM attempt — 2026-11-21 (~16:50–17:00 America/Los_Angeles)
+
+- On the API 36 x86_64 TCG AVD, a local debug APK built from revision `a280bde7ba20952f63960b32103cffb5f0a785f9` plus temporary proxy-only CA trust reached MediaSession `PLAYING` after `BUFFERING`. Pause and stop each remained `NONE` after 25 seconds; resume returned to `PLAYING`. MediaSession titles changed during playback.
+- This was not the GitHub sideload path or a physical phone run. The emulator had no audio output, Android system ANRs, and MediaSession position `-1`; no audible result, internal player state, channel/quality verification, or attributable stream-open count was available. Settings persistence and network interruption were not checked.
+- Result: all five phone acceptance checks remain BLOCKED. This partial AVD observation is not a pass. The companion foreground-recovery attempt is detailed in `.agents/tasks/wip/5a84a5c1-verify-foreground-audio-recovery-on-device.md`.

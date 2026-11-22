@@ -1,6 +1,6 @@
 # [TASK] Smooth Now Playing artwork transitions for song and channel changes
 
-- Status: implemented, verified (host SDK available)
+- Status: done (implemented and verified with the host SDK)
 - Source: approved Now Playing transition plan
 - Owner: coder
 
